@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #FFF8EE;
+  color: #222A3A;
+  font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar discreto */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb { background: #E6DCC8; border-radius: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Estilos para impresión de la factura */
+@media print {
+  body * { visibility: hidden; }
+  .area-impresion, .area-impresion * { visibility: visible; }
+  .area-impresion { position: absolute; left: 0; top: 0; width: 100%; }
+  .no-print { display: none !important; }
+}
+
+@keyframes aparecer { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animar { animation: aparecer .18s ease-out; }
