@@ -1,4 +1,5 @@
-import { X, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X, AlertTriangle, ChevronDown } from "lucide-react";
 import logo from "../assets/logo.png";
 import { EMPRESA } from "../lib/format";
 
@@ -86,4 +87,55 @@ export function Boton({ children, variante = "primario", className = "", ...prop
     suave: "border border-sol-borde text-sol-gris hover:bg-sol-suave",
   };
   return <button className={`${base} ${estilos[variante]} ${className}`} {...props}>{children}</button>;
+}
+
+export function SelectPro({ value, onChange, options = [], className = "", placeholder = "Seleccionar", ariaLabel }) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef(null);
+  const selected = useMemo(() => options.find((o) => String(o.value) === String(value)), [options, value]);
+
+  useEffect(() => {
+    const cerrar = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", cerrar);
+    return () => document.removeEventListener("mousedown", cerrar);
+  }, []);
+
+  return (
+    <div ref={ref} className={`relative min-w-[190px] ${className}`}>
+      <button
+        type="button"
+        aria-label={ariaLabel || placeholder}
+        aria-expanded={abierto}
+        onClick={() => setAbierto((v) => !v)}
+        className={`w-full h-10 rounded-xl border px-3 text-sm font-bold bg-white flex items-center justify-between gap-3 transition shadow-sm ${
+          abierto ? "border-sol-azul ring-2 ring-sol-azul/10" : "border-sol-borde hover:border-sol-azul"
+        }`}>
+        <span className={`truncate ${selected ? "text-sol-tinta" : "text-sol-gris"}`}>{selected?.label || placeholder}</span>
+        <ChevronDown size={16} className={`shrink-0 text-sol-azul transition ${abierto ? "rotate-180" : ""}`} />
+      </button>
+      {abierto && (
+        <div className="absolute z-30 mt-2 w-full rounded-xl border border-sol-borde bg-white shadow-xl overflow-hidden p-1 max-h-72 overflow-y-auto">
+          {options.map((o) => {
+            const activo = String(o.value) === String(value);
+            return (
+              <button
+                type="button"
+                key={o.value}
+                onClick={() => {
+                  onChange(o.value);
+                  setAbierto(false);
+                }}
+                className={`w-full text-left rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  activo ? "bg-sol-azul text-white" : "text-sol-tinta hover:bg-sol-suave"
+                }`}>
+                <span className="block truncate">{o.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }

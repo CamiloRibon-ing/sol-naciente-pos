@@ -9,7 +9,7 @@ const stockMap = (ingredientes) =>
 export function consumoCarrito(cart, productos) {
   const consumo = {};
   for (const item of cart) {
-    const p = productos.find((x) => x.id === item.id);
+    const p = productos.find((x) => x.id === (item.productoId || item.id));
     if (!p?.controlaInventario) continue;
     if (!(p.receta || []).length) continue;
     for (const r of p.receta || []) {
@@ -24,7 +24,7 @@ export function consumoCarrito(cart, productos) {
 export function disponibleProducto(producto, ingredientes, cart, productos) {
   if (!producto.controlaInventario) return Infinity;
   if (!(producto.receta || []).length) {
-    const enCarrito = (cart || []).filter((item) => item.id === producto.id).reduce((s, item) => s + Number(item.cantidad || 0), 0);
+    const enCarrito = (cart || []).filter((item) => (item.productoId || item.id) === producto.id).reduce((s, item) => s + Number(item.cantidad || 0), 0);
     return Math.max(0, Math.floor(Number(producto.stock || 0) - enCarrito));
   }
   const stock = stockMap(ingredientes);

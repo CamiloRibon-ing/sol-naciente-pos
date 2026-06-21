@@ -71,11 +71,12 @@ const mapCategoria = (row) => {
     descripcion: row.descripcion || "",
     color: row.color || base?.color || "#1A4FA0",
     activo: row.activo !== false,
+    orden: Number(row.orden) || 0,
   };
 };
 async function categoriasSupabase() {
   if (_catCache) return _catCache;
-  const { data } = await supabase.from("categorias").select("id_categoria, nombre_categoria, descripcion, color, activo");
+  const { data } = await supabase.from("categorias").select("id_categoria, nombre_categoria, descripcion, color, activo, orden").order("orden").order("nombre_categoria");
   _catCache = data || [];
   return _catCache;
 }
@@ -102,6 +103,13 @@ const mapProducto = (row) => ({
   stockMin: Number(row.stock_minimo) || 0,
   cat: catIdLocal(row.categorias?.nombre_categoria),
   receta: (row.recetas || []).map((r) => ({ ingredienteId: r.id_ingrediente, cantidad: Number(r.cantidad) })),
+  variantes: (row.producto_variantes || []).map((v) => ({
+    id: v.id_variante,
+    nombre: v.nombre,
+    precio: Number(v.precio_venta) || 0,
+    costo: Number(v.costo_estimado) || 0,
+    activo: v.activo !== false,
+  })),
 });
 const mapIngrediente = (row) => ({
   id: row.id_ingrediente,
@@ -114,6 +122,10 @@ const mapIngrediente = (row) => ({
 
 const tieneReceta = (producto) => (producto?.receta || []).length > 0;
 const esProductoStockDirecto = (producto) => producto?.controlaInventario && !tieneReceta(producto);
+const esTablaVariantesFaltante = (error) =>
+  error?.code === "42P01" || /producto_variantes|relation .* does not exist|Could not find a relationship/i.test(error?.message || "");
+const esColumnaOrdenCategoriaFaltante = (error) =>
+  error?.code === "42703" || /column .*orden.* does not exist|orden/i.test(error?.message || "");
 const consumoProductosDirectos = (lineas = []) => lineas.reduce((acc, l) => {
   const prod = _productos.find((p) => p.id === l.productoId);
   if (esProductoStockDirecto(prod)) acc[l.productoId] = (acc[l.productoId] || 0) + Number(l.cantidad || 0);
@@ -161,14 +173,26 @@ export async function listBodegas() {
 
 export async function listCategorias({ incluirInactivas = false } = {}) {
   if (modoDemo) {
-    const cats = incluirInactivas ? _categorias : _categorias.filter((c) => c.activo !== false);
+    const ordenadas = [..._categorias].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0) || a.nombre.localeCompare(b.nombre, "es"));
+    const cats = incluirInactivas ? ordenadas : ordenadas.filter((c) => c.activo !== false);
     aplicarCategorias(cats);
     return wait(cats);
   }
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("categorias")
-    .select("id_categoria, nombre_categoria, descripcion, color, activo")
+    .select("id_categoria, nombre_categoria, descripcion, color, activo, orden")
+    .order("orden")
     .order("nombre_categoria");
+  if (error) {
+    if (esColumnaOrdenCategoriaFaltante(error)) {
+      const fallback = await supabase
+        .from("categorias")
+        .select("id_categoria, nombre_categoria, descripcion, color, activo")
+        .order("nombre_categoria");
+      data = fallback.data;
+      error = fallback.error;
+    }
+  }
   if (error) {
     const { data: dataBase, error: errorBase } = await supabase
       .from("categorias")
@@ -194,6 +218,7 @@ export async function saveCategoria(categoria, idUsuario) {
     descripcion: (categoria.descripcion || "").trim(),
     color: categoria.color || "#1A4FA0",
     activo: categoria.activo !== false,
+    orden: Number(categoria.orden) || 0,
   };
   if (!payload.nombre) throw new Error("El nombre de la categoria es obligatorio");
   const accion = categoria.uuid ? "EDITAR_CATEGORIA" : "CREAR_CATEGORIA";
@@ -201,7 +226,8 @@ export async function saveCategoria(categoria, idUsuario) {
     if (categoria.id && _categorias.some((c) => c.id === categoria.id)) {
       _categorias = _categorias.map((c) => (c.id === categoria.id ? { ...c, ...payload, id: c.id, uuid: c.uuid } : c));
     } else {
-      _categorias = [{ ...payload, id: slugCategoria(payload.nombre), uuid: "cat-" + Date.now() }, ..._categorias];
+      const orden = _categorias.length ? Math.max(..._categorias.map((c) => Number(c.orden) || 0)) + 1 : 0;
+      _categorias = [{ ...payload, orden, id: slugCategoria(payload.nombre), uuid: "cat-" + Date.now() }, ..._categorias];
     }
     aplicarCategorias(_categorias);
     await registrarAuditoria({ idUsuario, accion, tabla: "categorias", registroId: categoria.id || payload.nombre, detalle: payload });
@@ -212,19 +238,59 @@ export async function saveCategoria(categoria, idUsuario) {
     descripcion: payload.descripcion || null,
     color: payload.color,
     activo: payload.activo,
+    orden: payload.orden,
   };
   let id = categoria.uuid;
   if (id) {
-    const { error } = await supabase.from("categorias").update(row).eq("id_categoria", id);
+    let { error } = await supabase.from("categorias").update(row).eq("id_categoria", id);
+    if (esColumnaOrdenCategoriaFaltante(error)) {
+      const { orden, ...sinOrden } = row;
+      const res = await supabase.from("categorias").update(sinOrden).eq("id_categoria", id);
+      error = res.error;
+    }
     if (error) throw error;
   } else {
-    const { data, error } = await supabase.from("categorias").insert(row).select("id_categoria").single();
+    if (!categoria.orden && categoria.orden !== 0) {
+      const cats = await listCategorias({ incluirInactivas: true });
+      row.orden = cats.length ? Math.max(...cats.map((c) => Number(c.orden) || 0)) + 1 : 0;
+    }
+    let { data, error } = await supabase.from("categorias").insert(row).select("id_categoria").single();
+    if (esColumnaOrdenCategoriaFaltante(error)) {
+      const { orden, ...sinOrden } = row;
+      const res = await supabase.from("categorias").insert(sinOrden).select("id_categoria").single();
+      data = res.data;
+      error = res.error;
+    }
     if (error) throw error;
     id = data.id_categoria;
   }
   _catCache = null;
   await registrarAuditoria({ idUsuario, accion, tabla: "categorias", registroId: id, detalle: payload });
   return { ...payload, id: slugCategoria(payload.nombre), uuid: id };
+}
+
+export async function ordenarCategorias(categoriasOrdenadas, idUsuario) {
+  const normalizadas = categoriasOrdenadas.map((c, idx) => ({ ...c, orden: idx }));
+  if (modoDemo) {
+    _categorias = _categorias.map((c) => {
+      const nueva = normalizadas.find((x) => (x.uuid || x.id) === (c.uuid || c.id));
+      return nueva ? { ...c, orden: nueva.orden } : c;
+    });
+    aplicarCategorias(_categorias);
+    await registrarAuditoria({ idUsuario, accion: "ORDENAR_CATEGORIAS", tabla: "categorias", registroId: "categorias", detalle: { total: normalizadas.length } });
+    return wait(true);
+  }
+  for (const c of normalizadas) {
+    if (!c.uuid) continue;
+    const { error } = await supabase.from("categorias").update({ orden: c.orden }).eq("id_categoria", c.uuid);
+    if (esColumnaOrdenCategoriaFaltante(error)) {
+      throw new Error("Falta crear la columna orden en categorias para guardar el orden personalizado.");
+    }
+    if (error) throw error;
+  }
+  _catCache = null;
+  await registrarAuditoria({ idUsuario, accion: "ORDENAR_CATEGORIAS", tabla: "categorias", registroId: "categorias", detalle: { total: normalizadas.length } });
+  return true;
 }
 
 export async function deleteCategoria(categoria, idUsuario) {
@@ -523,10 +589,18 @@ export async function saveConfiguracionNegocio(config, idUsuario) {
 
 export async function listProductos() {
   if (modoDemo) return wait(_productos);
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("productos")
-    .select("*, categorias(nombre_categoria), recetas(id_ingrediente, cantidad)")
+    .select("*, categorias(nombre_categoria), recetas(id_ingrediente, cantidad), producto_variantes(id_variante, nombre, precio_venta, costo_estimado, activo)")
     .order("nombre");
+  if (esTablaVariantesFaltante(error)) {
+    const fallback = await supabase
+      .from("productos")
+      .select("*, categorias(nombre_categoria), recetas(id_ingrediente, cantidad)")
+      .order("nombre");
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error) throw error;
   return data.map(mapProducto);
 }
@@ -578,11 +652,21 @@ export async function listVentas() {
 
 export async function saveProducto(p, idUsuario) {
   const accion = p.id ? "EDITAR_PRODUCTO" : "CREAR_PRODUCTO";
+  const variantes = (p.variantes || [])
+    .map((v) => ({
+      id: v.id || null,
+      nombre: (v.nombre || "").trim(),
+      precio: Number(v.precio) || 0,
+      costo: Number(v.costo) || 0,
+      activo: v.activo !== false,
+    }))
+    .filter((v) => v.nombre && v.precio >= 0);
   if (modoDemo) {
+    const payloadDemo = { ...p, variantes };
     if (p.id && _productos.some((x) => x.id === p.id)) {
-      _productos = _productos.map((x) => (x.id === p.id ? { ...x, ...p } : x));
+      _productos = _productos.map((x) => (x.id === p.id ? { ...x, ...payloadDemo } : x));
     } else {
-      _productos = [..._productos, { ...p, id: "p" + Date.now() }];
+      _productos = [..._productos, { ...payloadDemo, id: "p" + Date.now() }];
     }
     await registrarAuditoria({ idUsuario, accion, tabla: "productos", registroId: p.id || p.nombre, detalle: { nombre: p.nombre, precio: p.precio, activo: p.activo !== false } });
     return wait(p);
@@ -614,8 +698,24 @@ export async function saveProducto(p, idUsuario) {
   if ((p.receta || []).length) {
     await supabase.from("recetas").insert(p.receta.map((r) => ({ id_producto: prodId, id_ingrediente: r.ingredienteId, cantidad: r.cantidad })));
   }
+  const { error: eDeleteVariantes } = await supabase.from("producto_variantes").delete().eq("id_producto", prodId);
+  if (esTablaVariantesFaltante(eDeleteVariantes) && variantes.length) {
+    throw new Error("Falta crear la tabla producto_variantes en Supabase para guardar precios por variante.");
+  } else if (eDeleteVariantes && !esTablaVariantesFaltante(eDeleteVariantes)) {
+    throw eDeleteVariantes;
+  }
+  if (variantes.length) {
+    const { error: eVariantes } = await supabase.from("producto_variantes").insert(variantes.map((v) => ({
+      id_producto: prodId,
+      nombre: v.nombre,
+      precio_venta: v.precio,
+      costo_estimado: v.costo,
+      activo: v.activo,
+    })));
+    if (eVariantes) throw eVariantes;
+  }
   await registrarAuditoria({ idUsuario, accion, tabla: "productos", registroId: prodId, detalle: { nombre: p.nombre, precio: p.precio, activo: p.activo !== false } });
-  return { ...p, id: prodId };
+  return { ...p, id: prodId, variantes };
 }
 
 export async function deleteProducto(id) {

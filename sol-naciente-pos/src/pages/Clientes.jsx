@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, Search, History, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, History, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { fmt, fmtFecha } from "../lib/format";
@@ -14,6 +14,8 @@ export default function Clientes() {
   const [confirmar, setConfirmar] = useState(null);
   const [verHistorial, setVerHistorial] = useState(null);
   const [doc, setDoc] = useState(null);
+  const [paginaClientes, setPaginaClientes] = useState(1);
+  const clientesPorPagina = 12;
 
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
 
@@ -37,6 +39,19 @@ export default function Clientes() {
   const historialDe = (cliente) =>
     historialVentas.filter((v) => v.id_cliente === cliente.id || (v.cliente || "").toLowerCase() === cliente.nombre.toLowerCase());
 
+  useEffect(() => {
+    setPaginaClientes(1);
+  }, [busqueda, filtrados.length]);
+
+  const totalPaginasClientes = Math.max(1, Math.ceil(filtrados.length / clientesPorPagina));
+  const paginaActualClientes = Math.min(paginaClientes, totalPaginasClientes);
+  const inicioClientes = (paginaActualClientes - 1) * clientesPorPagina;
+  const clientesPagina = filtrados.slice(inicioClientes, inicioClientes + clientesPorPagina);
+  const finClientes = Math.min(filtrados.length, inicioClientes + clientesPorPagina);
+  const inicioPaginasClientes = Math.max(1, Math.min(paginaActualClientes - 2, totalPaginasClientes - 4));
+  const paginasClientes = Array.from({ length: Math.min(totalPaginasClientes, 5) }, (_, i) => inicioPaginasClientes + i);
+  const cambiarPaginaClientes = (pagina) => setPaginaClientes(Math.max(1, Math.min(totalPaginasClientes, pagina)));
+
   return (
     <section className="flex-1 p-4 md:p-6 overflow-auto">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -53,14 +68,23 @@ export default function Clientes() {
           className="w-full rounded-xl pl-10 pr-3 py-2.5 text-sm border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
       </div>
 
-      <div className="rounded-2xl bg-white overflow-x-auto border border-sol-borde">
+      <div className="rounded-2xl bg-white border border-sol-borde">
+        <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 border-b border-sol-borde">
+          <h2 className="font-extrabold text-sm">Directorio de clientes</h2>
+          {!!filtrados.length && (
+            <span className="text-xs font-bold text-sol-gris">
+              Mostrando {inicioClientes + 1}-{finClientes} de {filtrados.length}
+            </span>
+          )}
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[640px]">
           <thead><tr className="bg-sol-suave text-sol-gris">
             {["Cliente", "Documento", "Teléfono", "Correo", "Compras", ""].map((h, i) =>
               <th key={i} className={`px-4 py-2.5 font-bold ${i === 4 ? "text-right" : "text-left"}`}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {filtrados.map((c) => {
+            {clientesPagina.map((c) => {
               const compras = historialDe(c);
               return (
                 <tr key={c.id} className="border-t border-sol-suave">
@@ -83,6 +107,38 @@ export default function Clientes() {
           </tbody>
         </table>
         {!filtrados.length && <p className="text-sol-gris text-sm p-6 text-center">Aún no has registrado clientes.</p>}
+        </div>
+        {filtrados.length > clientesPorPagina && (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-t border-sol-borde">
+            <button
+              onClick={() => cambiarPaginaClientes(paginaActualClientes - 1)}
+              disabled={paginaActualClientes === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <div className="flex items-center justify-center gap-1">
+              {inicioPaginasClientes > 1 && <span className="px-1 text-xs text-sol-gris">...</span>}
+              {paginasClientes.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => cambiarPaginaClientes(p)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-extrabold ${p === paginaActualClientes ? "bg-sol-azul text-white" : "border border-sol-borde text-sol-gris hover:border-sol-azul hover:text-sol-azul"}`}
+                >
+                  {p}
+                </button>
+              ))}
+              {inicioPaginasClientes + paginasClientes.length - 1 < totalPaginasClientes && <span className="px-1 text-xs text-sol-gris">...</span>}
+            </div>
+            <button
+              onClick={() => cambiarPaginaClientes(paginaActualClientes + 1)}
+              disabled={paginaActualClientes === totalPaginasClientes}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
       {editar !== undefined && <ClienteForm inicial={editar} onSave={onSave} onClose={() => setEditar(undefined)} />}

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Plus, Pencil, CheckCircle2, XCircle, PlayCircle, FileText, Search, Trash2, ToggleLeft, ToggleRight, CreditCard, AlertTriangle, Clock } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Pencil, CheckCircle2, XCircle, PlayCircle, FileText, Search, Trash2, ToggleLeft, ToggleRight, CreditCard, AlertTriangle, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
@@ -75,6 +75,8 @@ export default function Reservas() {
   const [hasta, setHasta] = useState("");
   const [doc, setDoc] = useState(null);
   const [pagarReserva, setPagarReserva] = useState(null);
+  const [paginaHistorial, setPaginaHistorial] = useState(1);
+  const reservasPorPagina = 10;
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -87,6 +89,19 @@ export default function Reservas() {
       return true;
     });
   }, [reservas, busqueda, estado, desde, hasta]);
+
+  useEffect(() => {
+    setPaginaHistorial(1);
+  }, [busqueda, estado, desde, hasta, filtradas.length]);
+
+  const totalPaginasReservas = Math.max(1, Math.ceil(filtradas.length / reservasPorPagina));
+  const paginaActualReservas = Math.min(paginaHistorial, totalPaginasReservas);
+  const inicioReservas = (paginaActualReservas - 1) * reservasPorPagina;
+  const reservasPagina = filtradas.slice(inicioReservas, inicioReservas + reservasPorPagina);
+  const finReservas = Math.min(filtradas.length, inicioReservas + reservasPorPagina);
+  const inicioPaginasReservas = Math.max(1, Math.min(paginaActualReservas - 2, totalPaginasReservas - 4));
+  const paginasReservas = Array.from({ length: Math.min(totalPaginasReservas, 5) }, (_, i) => inicioPaginasReservas + i);
+  const cambiarPaginaReservas = (pagina) => setPaginaHistorial(Math.max(1, Math.min(totalPaginasReservas, pagina)));
 
   const onSave = async (payload) => {
     try {
@@ -432,7 +447,14 @@ export default function Reservas() {
 
       <div className="mt-5 rounded-2xl bg-white border border-sol-borde p-4">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-          <h2 className="font-extrabold">Historial de reservas</h2>
+          <div>
+            <h2 className="font-extrabold">Historial de reservas</h2>
+            {!!filtradas.length && (
+              <p className="text-xs font-bold text-sol-gris mt-0.5">
+                Mostrando {inicioReservas + 1}-{finReservas} de {filtradas.length}
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <div className="relative">
               <Search size={14} className="text-sol-grisClaro absolute left-3 top-1/2 -translate-y-1/2" />
@@ -457,7 +479,7 @@ export default function Reservas() {
                 <th key={i} className={`px-3 py-2.5 font-bold ${[3, 4, 5, 6].includes(i) ? "text-right" : "text-left"}`}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {filtradas.map((r) => {
+              {reservasPagina.map((r) => {
                 const saldo = Math.max(0, Number(r.saldoPendiente ?? (Number(r.montoTotal) - Number(r.anticipo || 0))));
                 return (
                   <tr key={r.id} className="border-t border-sol-suave">
@@ -486,6 +508,37 @@ export default function Reservas() {
           </table>
           {!filtradas.length && <p className="text-sol-gris text-sm p-6 text-center">No hay reservas que coincidan con los filtros.</p>}
         </div>
+        {filtradas.length > reservasPorPagina && (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-1 pt-4 mt-3 border-t border-sol-borde">
+            <button
+              onClick={() => cambiarPaginaReservas(paginaActualReservas - 1)}
+              disabled={paginaActualReservas === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <div className="flex items-center justify-center gap-1">
+              {inicioPaginasReservas > 1 && <span className="px-1 text-xs text-sol-gris">...</span>}
+              {paginasReservas.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => cambiarPaginaReservas(p)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-extrabold ${p === paginaActualReservas ? "bg-sol-azul text-white" : "border border-sol-borde text-sol-gris hover:border-sol-azul hover:text-sol-azul"}`}
+                >
+                  {p}
+                </button>
+              ))}
+              {inicioPaginasReservas + paginasReservas.length - 1 < totalPaginasReservas && <span className="px-1 text-xs text-sol-gris">...</span>}
+            </div>
+            <button
+              onClick={() => cambiarPaginaReservas(paginaActualReservas + 1)}
+              disabled={paginaActualReservas === totalPaginasReservas}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
       {editar !== undefined && (

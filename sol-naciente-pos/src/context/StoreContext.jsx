@@ -173,6 +173,12 @@ export function StoreProvider({ children }) {
     await cargarProductos();
   };
 
+  const ordenarCategorias = async (categoriasOrdenadas) => {
+    await db.ordenarCategorias(categoriasOrdenadas, idUsuario());
+    const cats = await db.listCategorias({ incluirInactivas: true });
+    setCategorias(cats);
+  };
+
   const eliminarCategoria = async (payload) => {
     await db.deleteCategoria(payload, idUsuario());
     const cats = await db.listCategorias({ incluirInactivas: true });
@@ -184,7 +190,7 @@ export function StoreProvider({ children }) {
     <StoreCtx.Provider value={{
       productos, ingredientes, ventas, cargando, error, modoDemo: db.modoDemo,
       configuracionNegocio, guardarConfiguracionNegocio,
-      categorias, guardarCategoria, eliminarCategoria,
+      categorias, guardarCategoria, ordenarCategorias, eliminarCategoria,
       recargar, puntosVenta, bodegas, puntoVentaId: puntoVentaActual?.id || "", puntoVentaActual, setPuntoVentaId,
       guardarPuntoVenta, eliminarPuntoVenta,
       guardarProducto: guardarProductoCtx, eliminarProducto, guardarIngrediente: guardarIngredienteCtx, eliminarIngrediente, ajustarStock: ajustarStockCtx,

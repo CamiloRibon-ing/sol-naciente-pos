@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Ban, CalendarDays, Download, Receipt, Search, UserRound, Wallet } from "lucide-react";
+import { Ban, CalendarDays, ChevronLeft, ChevronRight, Download, Receipt, Search, UserRound, Wallet } from "lucide-react";
 import { useStore } from "../context/StoreContext";
 import { fmt, fmtFecha } from "../lib/format";
-import { Boton, StatCard } from "../components/ui";
+import { descargarExcel } from "../lib/excel";
+import { Boton, SelectPro, StatCard } from "../components/ui";
 import * as cajaDb from "../lib/caja";
 
 const inicioDia = (s) => {
@@ -42,6 +43,8 @@ export default function ReportesVendedor() {
   const [fUsuario, setFUsuario] = useState("todos");
   const [busqueda, setBusqueda] = useState("");
   const [cajas, setCajas] = useState([]);
+  const [paginaVentas, setPaginaVentas] = useState(1);
+  const ventasPorPagina = 10;
 
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
 
@@ -67,6 +70,19 @@ export default function ReportesVendedor() {
     if (q && ![v.numero, v.cliente, v.cajero, v.puntoVenta].some((x) => String(x || "").toLowerCase().includes(q))) return false;
     return true;
   }), [historialVentas, desdeDate, hastaDate, puntoFiltroKey, fUsuario, busqueda]);
+
+  useEffect(() => {
+    setPaginaVentas(1);
+  }, [desde, hasta, fPunto, fUsuario, busqueda, ventasRango.length]);
+
+  const totalPaginasVentas = Math.max(1, Math.ceil(ventasRango.length / ventasPorPagina));
+  const paginaActualVentas = Math.min(paginaVentas, totalPaginasVentas);
+  const inicioVentas = (paginaActualVentas - 1) * ventasPorPagina;
+  const ventasPagina = ventasRango.slice(inicioVentas, inicioVentas + ventasPorPagina);
+  const finVentas = Math.min(ventasRango.length, inicioVentas + ventasPorPagina);
+  const inicioPaginasVentas = Math.max(1, Math.min(paginaActualVentas - 2, totalPaginasVentas - 4));
+  const paginasVentas = Array.from({ length: Math.min(totalPaginasVentas, 5) }, (_, i) => inicioPaginasVentas + i);
+  const cambiarPaginaVentas = (pagina) => setPaginaVentas(Math.max(1, Math.min(totalPaginasVentas, pagina)));
 
   const vendedores = useMemo(() => {
     const map = new Map();
@@ -109,18 +125,99 @@ export default function ReportesVendedor() {
     };
   }, [ventasRango, cajas, fUsuario]);
 
-  const exportarCSV = () => {
-    const header = ["Vendedor", "Numero", "Fecha", "Local", "Cliente", "Pago", "Estado", "Total"];
-    const filas = ventasRango.map((v) => [v.cajero, v.numero, new Date(v.fecha).toISOString(), v.puntoVenta, v.cliente, v.pago, v.estado, v.total]);
-    const csv = [header, ...filas].map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `reporte-vendedores-${desde}-${hasta}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportarExcel = () => {
+    const localSeleccionado = fPunto === "todos"
+      ? "Todos los locales"
+      : puntosVenta.find((p) => p.id === fPunto)?.nombre || "Local seleccionado";
+    const vendedorSeleccionado = fUsuario === "todos"
+      ? "Todos los vendedores"
+      : vendedores.find((v) => v.id === fUsuario)?.nombre || "Vendedor seleccionado";
+
+    descargarExcel({
+      nombreArchivo: `reporte-vendedores-${desde}-${hasta}.xls`,
+      hojas: [
+        {
+          nombre: "Resumen",
+          filas: [
+            ["Indicador", "Valor"],
+            ["Desde", desde],
+            ["Hasta", hasta],
+            ["Local", localSeleccionado],
+            ["Vendedor", vendedorSeleccionado],
+            ["Ventas pagadas", resumen.ventas],
+            ["Ingresos vendidos", resumen.ingresos],
+            ["Anulaciones", resumen.anuladas],
+            ["Cierres de caja", resumen.totalCierres],
+          ],
+        },
+        {
+          nombre: "Ranking vendedores",
+          filas: [
+            ["Vendedor", "Ventas pagadas", "Anulaciones", "Ingresos vendidos", "Ticket promedio"],
+            ...resumen.porVendedor.map((v) => [
+              v.nombre,
+              v.ventas,
+              v.anuladas,
+              v.ingresos,
+              v.ventas ? Math.round(v.ingresos / v.ventas) : 0,
+            ]),
+          ],
+        },
+        {
+          nombre: "Metodos de pago",
+          filas: [
+            ["Metodo", "Total vendido", "Participacion"],
+            ...Object.entries(resumen.porMetodo).map(([metodo, monto]) => [
+              metodo,
+              monto,
+              resumen.ingresos ? `${Math.round((Number(monto) / resumen.ingresos) * 100)}%` : "0%",
+            ]),
+          ],
+        },
+        {
+          nombre: "Cierres de caja",
+          filas: [
+            ["Local", "Apertura", "Cierre", "Usuario apertura", "Usuario cierre", "Esperado", "Real", "Diferencia"],
+            ...resumen.cierresDetalle.map((c) => [
+              c.puntos_venta?.nombre || c.id_punto || "Sin local",
+              fmtFecha(c.fecha_apertura),
+              fmtFecha(c.fecha_cierre),
+              c.usuario_apertura?.nombre || c.id_usuario_apertura || "",
+              c.usuario_cierre?.nombre || c.id_usuario_cierre || "",
+              Number(c.monto_final_esperado) || 0,
+              Number(c.monto_final_real) || 0,
+              Number(c.diferencia) || 0,
+            ]),
+          ],
+        },
+        {
+          nombre: "Detalle ventas",
+          filas: [
+            ["Numero", "Fecha", "Local", "Vendedor", "Cliente", "Pago", "Estado", "Total"],
+            ...ventasRango.map((v) => [
+              v.numero,
+              fmtFecha(v.fecha),
+              v.puntoVenta || "",
+              v.cajero || "Sin usuario",
+              v.cliente || "Consumidor final",
+              v.pago || "",
+              v.estado === "anulada" ? "Anulada" : "Pagada",
+              Number(v.total) || 0,
+            ]),
+          ],
+        },
+      ],
+    });
   };
+
+  const opcionesPunto = [
+    { value: "todos", label: "Todos los locales" },
+    ...puntosVenta.map((p) => ({ value: p.id, label: p.idPuntoPadre ? `- ${p.nombre}` : p.nombre })),
+  ];
+  const opcionesVendedor = [
+    { value: "todos", label: "Todos los vendedores" },
+    ...vendedores.map((v) => ({ value: v.id, label: v.nombre })),
+  ];
 
   return (
     <section className="flex-1 p-4 md:p-6 overflow-auto">
@@ -129,29 +226,23 @@ export default function ReportesVendedor() {
           <h1 className="font-extrabold text-2xl">Reportes por vendedor</h1>
           <p className="text-sol-gris text-[13px]">Ventas, metodos de pago, anulaciones y cierres de caja por usuario.</p>
         </div>
-        <Boton onClick={exportarCSV}><Download size={16} /> Exportar CSV</Boton>
+        <Boton onClick={exportarExcel}><Download size={16} /> Exportar Excel</Boton>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="rounded-2xl bg-white border border-sol-borde p-3 mb-4 shadow-sm">
+      <div className="flex flex-wrap gap-2">
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
-          className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
+          className="h-10 rounded-xl px-3 py-2 text-sm font-bold border border-sol-borde bg-white shadow-sm focus:outline-none focus:border-sol-azul focus:ring-2 focus:ring-sol-azul/10" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
-          className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
-        <select value={fPunto} onChange={(e) => setFPunto(e.target.value)}
-          className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
-          <option value="todos">Todos los locales</option>
-          {puntosVenta.map((p) => <option key={p.id} value={p.id}>{p.idPuntoPadre ? `- ${p.nombre}` : p.nombre}</option>)}
-        </select>
-        <select value={fUsuario} onChange={(e) => setFUsuario(e.target.value)}
-          className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
-          <option value="todos">Todos los vendedores</option>
-          {vendedores.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-        </select>
+          className="h-10 rounded-xl px-3 py-2 text-sm font-bold border border-sol-borde bg-white shadow-sm focus:outline-none focus:border-sol-azul focus:ring-2 focus:ring-sol-azul/10" />
+        <SelectPro value={fPunto} onChange={setFPunto} options={opcionesPunto} placeholder="Local" ariaLabel="Filtrar por local" />
+        <SelectPro value={fUsuario} onChange={setFUsuario} options={opcionesVendedor} placeholder="Vendedor" ariaLabel="Filtrar por vendedor" />
         <div className="relative">
           <Search size={14} className="text-sol-grisClaro absolute left-3 top-1/2 -translate-y-1/2" />
           <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar venta"
-            className="rounded-lg pl-8 pr-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
+            className="h-10 rounded-xl pl-8 pr-3 py-2 text-sm font-bold border border-sol-borde bg-white shadow-sm focus:outline-none focus:border-sol-azul focus:ring-2 focus:ring-sol-azul/10" />
         </div>
+      </div>
       </div>
 
       <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
@@ -215,7 +306,14 @@ export default function ReportesVendedor() {
       </div>
 
       <div className="rounded-2xl bg-white border border-sol-borde p-4">
-        <h2 className="font-extrabold mb-3">Detalle de ventas</h2>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="font-extrabold">Detalle de ventas</h2>
+          {!!ventasRango.length && (
+            <span className="text-xs font-bold text-sol-gris">
+              Mostrando {inicioVentas + 1}-{finVentas} de {ventasRango.length}
+            </span>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[920px]">
             <thead><tr className="bg-sol-suave text-sol-gris">
@@ -223,7 +321,7 @@ export default function ReportesVendedor() {
                 <th key={i} className={`px-3 py-2.5 font-bold ${i === 7 ? "text-right" : "text-left"}`}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {ventasRango.map((v) => (
+              {ventasPagina.map((v) => (
                 <tr key={v.id} className={`border-t border-sol-suave ${v.estado === "anulada" ? "opacity-60" : ""}`}>
                   <td className="px-3 py-2.5 font-bold">{v.numero}</td>
                   <td className="px-3 py-2.5 text-sol-gris">{fmtFecha(v.fecha)}</td>
@@ -243,6 +341,37 @@ export default function ReportesVendedor() {
           </table>
           {!ventasRango.length && <p className="text-sol-gris text-sm p-6 text-center">No hay ventas para los filtros seleccionados.</p>}
         </div>
+        {ventasRango.length > ventasPorPagina && (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-1 pt-4 mt-3 border-t border-sol-borde">
+            <button
+              onClick={() => cambiarPaginaVentas(paginaActualVentas - 1)}
+              disabled={paginaActualVentas === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <div className="flex items-center justify-center gap-1">
+              {inicioPaginasVentas > 1 && <span className="px-1 text-xs text-sol-gris">...</span>}
+              {paginasVentas.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => cambiarPaginaVentas(p)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-extrabold ${p === paginaActualVentas ? "bg-sol-azul text-white" : "border border-sol-borde text-sol-gris hover:border-sol-azul hover:text-sol-azul"}`}
+                >
+                  {p}
+                </button>
+              ))}
+              {inicioPaginasVentas + paginasVentas.length - 1 < totalPaginasVentas && <span className="px-1 text-xs text-sol-gris">...</span>}
+            </div>
+            <button
+              onClick={() => cambiarPaginaVentas(paginaActualVentas + 1)}
+              disabled={paginaActualVentas === totalPaginasVentas}
+              className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-3 py-2 text-xs font-bold text-sol-gris disabled:opacity-40 disabled:cursor-not-allowed hover:border-sol-azul hover:text-sol-azul"
+            >
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

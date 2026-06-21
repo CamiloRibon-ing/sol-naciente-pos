@@ -22,6 +22,14 @@ const diasEntre = (ini, fin) => {
   return Math.round((b - a) / 86400000) + 1;
 };
 
+const salarioBasePeriodo = (empleado, periodo, diasTrabajados) => {
+  const diasPeriodo = Math.max(1, diasEntre(periodo?.fechaInicio, periodo?.fechaFin));
+  const sueldoMensual = Number(empleado?.salarioBase) || 0;
+  const basePeriodo = periodo?.tipo === "Quincenal" ? sueldoMensual / 2 : sueldoMensual;
+  const dias = Math.min(Math.max(0, Number(diasTrabajados) || 0), diasPeriodo);
+  return Math.round((basePeriodo * dias) / diasPeriodo);
+};
+
 function PeriodoForm({ onSave, onClose }) {
   const hoy = new Date();
   const [f, setF] = useState({ nombre: "", fechaInicio: "", fechaFin: "", tipo: "Quincenal", mes: `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`, quincena: "1" });
@@ -135,7 +143,7 @@ export default function Nomina() {
         const get = (n) => l.conceptos.find((c) => c.nombre === n)?.valor || 0;
         next[l.empleado.id] = {
           diasTrabajados: l.diasTrabajados ?? dias,
-          salarioPeriodo: get("Salario") || Math.round((l.empleado.salarioBase * (l.diasTrabajados ?? dias)) / Math.max(1, dias)),
+          salarioPeriodo: get("Salario") || salarioBasePeriodo(l.empleado, periodoSel, l.diasTrabajados ?? dias),
           horasExtra: get("Horas extra"),
           bonificacion: get("Bonificación"),
           prestamo: get("Préstamo"),
@@ -163,7 +171,10 @@ export default function Nomina() {
   const calcular = (empleado, e) => {
     const dias = diasEntre(periodoSel.fechaInicio, periodoSel.fechaFin) || 1;
     const diasTrabajados = Number(e?.diasTrabajados ?? dias);
-    const salarioProporcional = limpiarMonto(e?.salarioPeriodo) || Math.round((empleado.salarioBase * diasTrabajados) / dias);
+    const salarioEsperado = salarioBasePeriodo(empleado, periodoSel, diasTrabajados);
+    const salarioDigitado = limpiarMonto(e?.salarioPeriodo);
+    const salarioProporcional = salarioDigitado || salarioEsperado;
+    const salarioExcedePeriodo = salarioProporcional > salarioEsperado;
     const salud = e?.aplicarSalud ? Math.round(salarioProporcional * 0.04) : 0;
     const pension = e?.aplicarPension ? Math.round(salarioProporcional * 0.04) : 0;
     const horasExtra = limpiarMonto(e?.horasExtra);
@@ -173,11 +184,15 @@ export default function Nomina() {
     const totalDeducciones = salud + pension + prestamo;
     const netoPagar = totalDevengado - totalDeducciones;
     const montoPagado = Math.min(Math.max(0, limpiarMonto(e?.montoPagado)), Math.max(0, netoPagar));
-    return { diasTrabajados, salarioProporcional, salud, pension, horasExtra, bonificacion, prestamo, totalDevengado, totalDeducciones, netoPagar, montoPagado, saldoPendiente: Math.max(0, netoPagar - montoPagado) };
+    return { diasTrabajados, salarioProporcional, salarioEsperado, salarioExcedePeriodo, salud, pension, horasExtra, bonificacion, prestamo, totalDevengado, totalDeducciones, netoPagar, montoPagado, saldoPendiente: Math.max(0, netoPagar - montoPagado) };
   };
 
   const guardarFila = async (l) => {
     const calc = calcular(l.empleado, edits[l.empleado.id]);
+    if (calc.salarioExcedePeriodo) {
+      toast.error(`El sueldo del periodo no puede superar ${fmt(calc.salarioEsperado)} para ${periodoSel.tipo.toLowerCase()}. Usa bonificación si es un pago adicional.`);
+      return;
+    }
     const conceptos = [
       { nombre: "Salario", tipo: "devengado", valor: calc.salarioProporcional },
       ...(calc.horasExtra > 0 ? [{ nombre: "Horas extra", tipo: "devengado", valor: calc.horasExtra }] : []),
@@ -397,8 +412,11 @@ export default function Nomina() {
                           onChange={(ev) => setEdit(l.empleado.id, "diasTrabajados", ev.target.value)} />
                       </td>
                       <td className="px-3 py-2">
-                        <input inputMode="numeric" disabled={bloqueado} className={numCN} value={formatoMontoInput(e.salarioPeriodo ?? calc.salarioProporcional)}
+                        <input inputMode="numeric" disabled={bloqueado} className={`${numCN} ${calc.salarioExcedePeriodo ? "border-sol-rojo text-sol-rojo" : ""}`} value={formatoMontoInput(e.salarioPeriodo ?? calc.salarioProporcional)}
                           onChange={(ev) => setEdit(l.empleado.id, "salarioPeriodo", formatoMontoInput(ev.target.value))} />
+                        {calc.salarioExcedePeriodo && (
+                          <div className="mt-1 text-[10px] font-bold text-sol-rojo text-right">Max. {fmt(calc.salarioEsperado)}</div>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <input inputMode="numeric" disabled={bloqueado} className={numCN} value={formatoMontoInput(e.horasExtra ?? 0)}

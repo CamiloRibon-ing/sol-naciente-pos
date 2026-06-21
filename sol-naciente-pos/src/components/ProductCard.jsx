@@ -8,6 +8,10 @@ export default function ProductCard({ p, disponible, onAdd }) {
   const color = catColor(p.cat);
   const ilimitado = disponible === Infinity;
   const agotado = !ilimitado && disponible <= 0;
+  const variantesActivas = (p.variantes || []).filter((v) => v.activo !== false);
+  const precioMinimo = variantesActivas.length
+    ? Math.min(...variantesActivas.map((v) => Number(v.precio) || 0).filter((n) => n >= 0))
+    : Number(p.precio) || 0;
 
   return (
     <div className={`rounded-2xl overflow-hidden flex flex-col bg-white border border-sol-borde transition hover:-translate-y-0.5 hover:shadow-md ${agotado ? "opacity-60" : ""}`}>
@@ -26,8 +30,15 @@ export default function ProductCard({ p, disponible, onAdd }) {
         )}
       </div>
       <div className="p-3 flex flex-col gap-1.5 flex-1">
-        <div className="text-sol-rojo font-extrabold text-[15px]">{fmt(p.precio)}</div>
+        <div className="text-sol-rojo font-extrabold text-[15px]">
+          {variantesActivas.length ? `Desde ${fmt(precioMinimo)}` : fmt(p.precio)}
+        </div>
         <div className="text-sol-tinta font-bold text-[13.5px] leading-tight">{p.nombre}</div>
+        {!!variantesActivas.length && (
+          <div className="text-[10px] font-extrabold uppercase text-sol-azul bg-sol-azul/10 rounded-full px-2 py-0.5 w-fit">
+            {variantesActivas.length} variantes
+          </div>
+        )}
         <p className="text-sol-gris text-[11.5px] leading-snug flex-1 line-clamp-2">{p.desc}</p>
         <button
           onClick={() => onAdd(p)}

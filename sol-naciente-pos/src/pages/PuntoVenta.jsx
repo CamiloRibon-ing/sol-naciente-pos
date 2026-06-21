@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { IMPUESTO, METODOS_PAGO } from "../lib/format";
 import { disponibleProducto, ingredienteFaltante } from "../lib/stock";
-import { ConfirmDialog } from "../components/ui";
+import { ConfirmDialog, Modal, ModalHeader } from "../components/ui";
 import ProductCard from "../components/ProductCard";
 import CartPanel from "../components/CartPanel";
 import DocumentoPreview from "../components/pdf/DocumentoPreview";
@@ -24,6 +24,7 @@ export default function PuntoVenta() {
   const [doc, setDoc] = useState(null);
   const [confirmarLimpiar, setConfirmarLimpiar] = useState(false);
   const [nuevoCliente, setNuevoCliente] = useState(false);
+  const [productoVariante, setProductoVariante] = useState(null);
   const [paginaMenu, setPaginaMenu] = useState(1);
   const productosPorPagina = 12;
 
@@ -58,24 +59,38 @@ export default function PuntoVenta() {
     }
   };
 
-  const agregar = (p) => {
+  const agregarProductoAlCarrito = (p, variante = null) => {
     const disp = dispDe(p);
     if (disp <= 0) {
       const falta = ingredienteFaltante(p, ingredientes, cart, productos);
       toast.error(`Sin stock suficiente${falta ? ` de ${falta}` : ""}`);
       return;
     }
+    const lineId = variante?.id ? `${p.id}::${variante.id}` : p.id;
+    const nombre = variante ? `${p.nombre} - ${variante.nombre}` : p.nombre;
+    const precio = variante ? Number(variante.precio) || 0 : p.precio;
+    const costo = variante ? Number(variante.costo) || p.costo : p.costo;
     setCart((c) => {
-      const ex = c.find((x) => x.id === p.id);
-      return ex ? c.map((x) => (x.id === p.id ? { ...x, cantidad: x.cantidad + 1 } : x))
-        : [...c, { id: p.id, nombre: p.nombre, cat: p.cat, precio: p.precio, costo: p.costo, cantidad: 1, descuento: 0, nota: "" }];
+      const ex = c.find((x) => x.id === lineId);
+      return ex ? c.map((x) => (x.id === lineId ? { ...x, cantidad: x.cantidad + 1 } : x))
+        : [...c, { id: lineId, productoId: p.id, varianteId: variante?.id || null, varianteNombre: variante?.nombre || "", nombre, cat: p.cat, precio, costo, cantidad: 1, descuento: 0, nota: "" }];
     });
-    toast.success(`${p.nombre} agregado`, { duration: 1200 });
+    toast.success(`${nombre} agregado`, { duration: 1200 });
     avisarStockBajo(p, disp - 1);
   };
 
+  const agregar = (p) => {
+    const variantes = (p.variantes || []).filter((v) => v.activo !== false);
+    if (variantes.length) {
+      setProductoVariante(p);
+      return;
+    }
+    agregarProductoAlCarrito(p);
+  };
+
   const inc = (id) => {
-    const p = productos.find((x) => x.id === id);
+    const item = cart.find((x) => x.id === id);
+    const p = productos.find((x) => x.id === (item?.productoId || id));
     const disp = dispDe(p);
     if (disp <= 0) {
       const falta = ingredienteFaltante(p, ingredientes, cart, productos);
@@ -129,7 +144,7 @@ export default function PuntoVenta() {
       puntoVenta: puntoVentaActual?.nombre || "",
       descuentoGlobal,
       estadoElectronico: tipo === "FACTURA" ? "Pendiente de integracion DIAN" : "No aplica",
-      lineas: cart.map((l) => ({ productoId: l.id, nombre: l.nombre, cat: l.cat, cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: l.descuento, nota: l.nota })),
+      lineas: cart.map((l) => ({ productoId: l.productoId || l.id, varianteId: l.varianteId || null, nombre: l.nombre, cat: l.cat, cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: l.descuento, nota: l.nota })),
     };
   };
 
@@ -160,7 +175,7 @@ export default function PuntoVenta() {
   const generarFactura = async () => {
     if (!cart.length) return;
     const numero = siguienteNumero("FACTURA");
-    const lineas = cart.map((l) => ({ productoId: l.id, nombre: l.nombre, cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: Number(l.descuento) || 0, nota: l.nota || "" }));
+    const lineas = cart.map((l) => ({ productoId: l.productoId || l.id, varianteId: l.varianteId || null, nombre: l.nombre, cantidad: l.cantidad, precio: l.precio, costo: l.costo, descuento: Number(l.descuento) || 0, nota: l.nota || "" }));
     const { baseImponible, descuentoTotal, impuestos, total } = totales;
 
     let pagosFinal = [{ metodo: pago, monto: total }];
@@ -290,6 +305,31 @@ export default function PuntoVenta() {
         onLimpiar={() => setConfirmarLimpiar(true)}
         onNuevoCliente={() => setNuevoCliente(true)}
       />
+
+      {productoVariante && (
+        <Modal onClose={() => setProductoVariante(null)} max="max-w-md">
+          <ModalHeader title={`Elegir variante · ${productoVariante.nombre}`} onClose={() => setProductoVariante(null)} />
+          <div className="p-4 space-y-2">
+            {(productoVariante.variantes || []).filter((v) => v.activo !== false).map((v) => (
+              <button
+                key={v.id || v.nombre}
+                type="button"
+                onClick={() => {
+                  agregarProductoAlCarrito(productoVariante, v);
+                  setProductoVariante(null);
+                }}
+                className="w-full rounded-xl border border-sol-borde bg-white px-4 py-3 text-left transition hover:border-sol-azul hover:bg-sol-azul/5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-extrabold text-sol-tinta">{v.nombre}</span>
+                  <span className="font-extrabold text-sol-rojo">{new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(Number(v.precio) || 0)}</span>
+                </div>
+                {Number(v.costo) > 0 && <div className="mt-1 text-xs text-sol-gris">Costo ref.: {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(Number(v.costo) || 0)}</div>}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
 
       {doc && <DocumentoPreview doc={doc} onClose={() => setDoc(null)} />}
       {nuevoCliente && (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, AlertTriangle, Eye, Search, SlidersHorizontal, Package, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Pencil, Trash2, AlertTriangle, Eye, Search, SlidersHorizontal, Package, ToggleLeft, ToggleRight, ArrowUp, ArrowDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { fmt, catNombre, catColor, margenInfo } from "../lib/format";
@@ -12,7 +12,7 @@ import AjusteStockForm from "../components/AjusteStockForm";
 import CategoriaForm from "../components/CategoriaForm";
 
 export default function Inventario() {
-  const { productos, ingredientes, categorias, guardarCategoria, eliminarCategoria, guardarProducto, eliminarProducto, guardarIngrediente, eliminarIngrediente, ajustarStock } = useStore();
+  const { productos, ingredientes, categorias, guardarCategoria, ordenarCategorias, eliminarCategoria, guardarProducto, eliminarProducto, guardarIngrediente, eliminarIngrediente, ajustarStock } = useStore();
   const [tab, setTab] = useState("productos");
   const [editProd, setEditProd] = useState(undefined);
   const [editIng, setEditIng] = useState(undefined);
@@ -23,6 +23,7 @@ export default function Inventario() {
   const [cat, setCat] = useState("todas");
   const [busqueda, setBusqueda] = useState("");
   const categoriasActivas = categorias.filter((c) => c.activo !== false);
+  const [ordenandoCat, setOrdenandoCat] = useState(false);
 
   const onSaveProd = async (p) => {
     try { await guardarProducto(p); toast.success(p.id ? "Producto actualizado" : "Producto creado"); setEditProd(undefined); }
@@ -44,6 +45,23 @@ export default function Inventario() {
   const onSaveCat = async (c) => {
     try { await guardarCategoria(c); toast.success(c.uuid ? "Categoria actualizada" : "Categoria creada"); setEditCat(undefined); }
     catch (e) { toast.error(e.message || "No se pudo guardar la categoria"); }
+  };
+  const moverCategoria = async (categoria, direccion) => {
+    const idx = categorias.findIndex((c) => (c.uuid || c.id) === (categoria.uuid || categoria.id));
+    const nuevoIdx = idx + direccion;
+    if (idx < 0 || nuevoIdx < 0 || nuevoIdx >= categorias.length) return;
+    const ordenadas = [...categorias];
+    const [item] = ordenadas.splice(idx, 1);
+    ordenadas.splice(nuevoIdx, 0, item);
+    setOrdenandoCat(true);
+    try {
+      await ordenarCategorias(ordenadas);
+      toast.success("Orden de categorias actualizado");
+    } catch (e) {
+      toast.error(e.message || "No se pudo actualizar el orden");
+    } finally {
+      setOrdenandoCat(false);
+    }
   };
   const onAjusteStock = async (payload) => {
     try { await ajustarStock(payload); toast.success("Stock ajustado"); setAjusteIng(null); }
@@ -182,6 +200,22 @@ export default function Inventario() {
 
   const columnasCategorias = [
     {
+      key: "orden", label: "Orden", align: "right",
+      render: (c) => {
+        const idx = categorias.findIndex((x) => (x.uuid || x.id) === (c.uuid || c.id));
+        return (
+          <div className="inline-flex items-center gap-1">
+            <button disabled={ordenandoCat || idx <= 0} onClick={() => moverCategoria(c, -1)} className="grid h-8 w-8 place-items-center rounded-lg border border-sol-borde text-sol-azul disabled:opacity-30 disabled:cursor-not-allowed hover:border-sol-azul" title="Subir categoria">
+              <ArrowUp size={14} />
+            </button>
+            <button disabled={ordenandoCat || idx >= categorias.length - 1} onClick={() => moverCategoria(c, 1)} className="grid h-8 w-8 place-items-center rounded-lg border border-sol-borde text-sol-azul disabled:opacity-30 disabled:cursor-not-allowed hover:border-sol-azul" title="Bajar categoria">
+              <ArrowDown size={14} />
+            </button>
+          </div>
+        );
+      },
+    },
+    {
       key: "nombre", label: "Categoria",
       render: (c) => (
         <div className="flex items-center gap-2">
@@ -243,7 +277,8 @@ export default function Inventario() {
       </div>
 
       {tab === "productos" && (
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        <div className="rounded-2xl border border-sol-borde bg-white/70 p-2 mb-4">
+        <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
           {[{ id: "todas", nombre: "Todas" }, ...categoriasActivas].map((c) => {
             const act = cat === c.id;
             return (
@@ -253,6 +288,8 @@ export default function Inventario() {
               </button>
             );
           })}
+        </div>
+        <p className="mt-1 px-1 text-[11px] text-sol-grisClaro">Desliza horizontalmente para ver mas categorias. El orden se administra en la pestaña Categorias.</p>
         </div>
       )}
 
@@ -282,6 +319,7 @@ export default function Inventario() {
           data={categoriasFiltradas}
           rowKey={(c) => c.uuid || c.id}
           minWidth="620px"
+          pageSize={8}
           emptyIcon={Package}
           emptyTitle="Sin categorias"
           emptyMessage="No hay categorias que coincidan con la busqueda."

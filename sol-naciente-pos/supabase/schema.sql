@@ -87,7 +87,8 @@ create table categorias (
   nombre_categoria  text not null unique,     -- Hamburguesas, Bebidas, Acceso Piscina, Combos...
   descripcion       text,
   color             text,
-  activo            boolean not null default true
+  activo            boolean not null default true,
+  orden             integer not null default 0
 );
 
 -- Producto = todo lo que aparece en el menú estilo KFC (comida, bebida, acceso piscina, combo)
@@ -110,6 +111,21 @@ create table productos (
 );
 create trigger trg_productos_updated before update on productos
   for each row execute function fn_set_updated_at();
+
+-- Variantes comerciales de un mismo producto.
+-- Ej: Michelada base -> con cerveza, con soda, con ginger; todas usan el mismo producto/receta,
+-- pero cambian precio, costo estimado y nombre mostrado en venta.
+create table producto_variantes (
+  id_variante     uuid primary key default gen_random_uuid(),
+  id_producto     uuid not null references productos(id_producto) on delete cascade,
+  nombre          text not null,
+  precio_venta    numeric(12,2) not null check (precio_venta >= 0),
+  costo_estimado  numeric(12,2) not null default 0,
+  activo          boolean not null default true,
+  orden           integer not null default 0,
+  created_at      timestamptz not null default now(),
+  unique (id_producto, nombre)
+);
 
 -- Materias primas
 create table ingredientes (

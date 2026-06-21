@@ -8,8 +8,18 @@ import { formatoMontoInput, limpiarMonto } from "../lib/format";
 export default function ProductoForm({ inicial, ingredientes, categorias = [], onSave, onClose }) {
   const [f, setF] = useState(
     inicial
-      ? { ...inicial, precio: formatoMontoInput(inicial.precio), costo: formatoMontoInput(inicial.costo) }
-      : { cat: categorias.find((c) => c.activo !== false)?.id || "comidas", nombre: "", desc: "", precio: "", costo: "", imagen: "", activo: true, controlaInventario: true, stock: "", stockMin: "", receta: [] }
+      ? {
+          ...inicial,
+          precio: formatoMontoInput(inicial.precio),
+          costo: formatoMontoInput(inicial.costo),
+          variantes: (inicial.variantes || []).map((v) => ({
+            ...v,
+            precio: formatoMontoInput(v.precio),
+            costo: formatoMontoInput(v.costo),
+            activo: v.activo !== false,
+          })),
+        }
+      : { cat: categorias.find((c) => c.activo !== false)?.id || "comidas", nombre: "", desc: "", precio: "", costo: "", imagen: "", activo: true, controlaInventario: true, stock: "", stockMin: "", receta: [], variantes: [] }
   );
   const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
@@ -17,6 +27,9 @@ export default function ProductoForm({ inicial, ingredientes, categorias = [], o
   const addReceta = () => set("receta", [...(f.receta || []), { ingredienteId: ingredientes[0]?.id || "", cantidad: 1 }]);
   const setReceta = (i, k, v) => set("receta", f.receta.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
   const delReceta = (i) => set("receta", f.receta.filter((_, idx) => idx !== i));
+  const addVariante = () => set("variantes", [...(f.variantes || []), { nombre: "", precio: f.precio || "", costo: f.costo || "", activo: true }]);
+  const setVariante = (i, k, v) => set("variantes", (f.variantes || []).map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const delVariante = (i) => set("variantes", (f.variantes || []).filter((_, idx) => idx !== i));
 
   const guardar = async () => {
     if (!f.nombre.trim()) return;
@@ -28,6 +41,15 @@ export default function ProductoForm({ inicial, ingredientes, categorias = [], o
         costo: limpiarMonto(f.costo),
         stock: +f.stock || 0,
         stockMin: +f.stockMin || 0,
+        variantes: (f.variantes || [])
+          .map((v) => ({
+            ...v,
+            nombre: (v.nombre || "").trim(),
+            precio: limpiarMonto(v.precio),
+            costo: limpiarMonto(v.costo),
+            activo: v.activo !== false,
+          }))
+          .filter((v) => v.nombre),
         receta: f.controlaInventario ? (f.receta || []).map((r) => ({ ...r, cantidad: +r.cantidad || 0 })) : [],
       });
     } finally {
@@ -36,10 +58,10 @@ export default function ProductoForm({ inicial, ingredientes, categorias = [], o
   };
 
   return (
-    <Modal onClose={onClose} max="max-w-xl">
+    <Modal onClose={onClose} max="max-w-2xl">
       <ModalHeader title={inicial ? "Editar producto" : "Nuevo producto"} onClose={onClose} />
       <div className="p-4 grid grid-cols-2 gap-3">
-        <div><ImageUpload value={f.imagen} onChange={(url) => set("imagen", url)} /></div>
+        <div><ImageUpload value={f.imagen} onChange={(url) => set("imagen", url)} height="h-52" /></div>
         <div>
           <span className={etiqueta}>Vista previa</span>
           <div className="mt-1 max-w-[160px]">
@@ -72,6 +94,25 @@ export default function ProductoForm({ inicial, ingredientes, categorias = [], o
           <input inputMode="numeric" className={campo} value={f.precio} onChange={(e) => set("precio", formatoMontoInput(e.target.value))} /></label>
         <label><span className={etiqueta}>Costo de referencia</span>
           <input inputMode="numeric" className={campo} value={f.costo} onChange={(e) => set("costo", formatoMontoInput(e.target.value))} /></label>
+
+        <div className="col-span-2 rounded-xl border border-sol-borde p-3 bg-white">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div>
+              <span className="text-xs font-extrabold text-sol-tinta">Variantes de precio</span>
+              <p className="text-[11px] text-sol-gris mt-0.5">Usa esto para micheladas, tamaños o preparaciones con precio distinto sin duplicar el producto.</p>
+            </div>
+            <button type="button" onClick={addVariante} className="text-xs font-bold text-sol-azul flex items-center gap-1 shrink-0"><Plus size={13} /> Agregar</button>
+          </div>
+          {!(f.variantes || []).length && <p className="text-xs text-sol-grisClaro">Sin variantes. El producto se vendera con el precio principal.</p>}
+          {(f.variantes || []).map((v, i) => (
+            <div key={i} className="grid grid-cols-[1fr_120px_120px_34px] gap-2 mb-2 items-center">
+              <input className={campo} value={v.nombre || ""} onChange={(e) => setVariante(i, "nombre", e.target.value)} placeholder="Ej: Con cerveza" />
+              <input inputMode="numeric" className={campo} value={v.precio || ""} onChange={(e) => setVariante(i, "precio", formatoMontoInput(e.target.value))} placeholder="Precio" />
+              <input inputMode="numeric" className={campo} value={v.costo || ""} onChange={(e) => setVariante(i, "costo", formatoMontoInput(e.target.value))} placeholder="Costo" />
+              <button type="button" onClick={() => delVariante(i)} className="grid h-9 w-9 place-items-center rounded-lg border border-sol-borde hover:border-sol-rojo"><Trash2 size={15} className="text-sol-rojo" /></button>
+            </div>
+          ))}
+        </div>
 
         {f.controlaInventario && !(f.receta || []).length && (
           <>

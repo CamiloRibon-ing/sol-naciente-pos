@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Wallet, Lock, Unlock, ArrowUpCircle, ArrowDownCircle, FileText, Clock, AlertCircle, CalendarDays, Store, BarChart3 } from "lucide-react";
+import { Wallet, Lock, Unlock, ArrowUpCircle, ArrowDownCircle, FileText, Clock, AlertCircle, CalendarDays, Store, BarChart3, Eye, Receipt, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { useAuth } from "../context/AuthContext";
@@ -24,6 +24,20 @@ const finDia = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); retu
 const aInputDate = (d) => d.toISOString().slice(0, 10);
 const aFechaLocal = (s) => new Date(`${s}T00:00:00`);
 
+const utilidadVenta = (venta) => (venta.lineas || []).reduce((s, l) => {
+  const cantidad = Number(l.cantidad) || 0;
+  const precio = Number(l.precio) || 0;
+  const costo = Number(l.costo) || 0;
+  return s + ((precio - costo) * cantidad);
+}, 0);
+
+const resumenProductosVenta = (venta) => {
+  const lineas = venta.lineas || [];
+  if (!lineas.length) return "Sin detalle";
+  const nombres = lineas.slice(0, 3).map((l) => `${Number(l.cantidad) || 0} x ${l.nombre}`).join(", ");
+  return lineas.length > 3 ? `${nombres} + ${lineas.length - 3} mas` : nombres;
+};
+
 export default function Caja() {
   const {
     cajaActual, movimientosCaja, ventas, historialVentas, cargarHistorial,
@@ -44,6 +58,8 @@ export default function Caja() {
   const [historialCajas, setHistorialCajas] = useState([]);
   const [historialMovs, setHistorialMovs] = useState([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [paginaVentasDetalle, setPaginaVentasDetalle] = useState(1);
+  const ventasPorPagina = 10;
 
   useEffect(() => {
     cargarCaja().finally(() => setCargando(false));
@@ -101,8 +117,11 @@ export default function Caja() {
       const movimientos = historialMovs.filter((m) => m.id_caja === caja.id_caja);
       const resumenCaja = calcularResumen(caja, ventasCaja, movimientos);
       const local = caja.puntos_venta?.nombre || puntosVenta.find((p) => p.id === caja.id_punto)?.nombre || "Sin local";
-      return { caja, local, resumen: resumenCaja, movimientos };
+      return { caja, local, resumen: resumenCaja, movimientos, ventas: ventasCaja };
     });
+    const ventasDetalle = detalle
+      .flatMap((item) => item.ventas.map((venta) => ({ ...venta, caja: item.caja, local: item.local })))
+      .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
     const porLocal = {};
     detalle.forEach((item) => {
       const id = item.caja.id_punto || item.local;
@@ -126,8 +145,22 @@ export default function Caja() {
       retiros: acc.retiros + p.retiros,
       diferencia: acc.diferencia + p.diferencia,
     }), { cajas: 0, ventas: 0, totalVentas: 0, efectivo: 0, ingresos: 0, egresos: 0, retiros: 0, diferencia: 0 });
-    return { detalle, porLocal: Object.values(porLocal).sort((a, b) => b.totalVentas - a.totalVentas), global };
+    const totalUtilidad = ventasDetalle.reduce((s, v) => s + utilidadVenta(v), 0);
+    return { detalle, ventasDetalle, totalUtilidad, porLocal: Object.values(porLocal).sort((a, b) => b.totalVentas - a.totalVentas), global };
   }, [historialCajas, historialMovs, historialVentas, ventas, puntosVenta]);
+
+  useEffect(() => {
+    setPaginaVentasDetalle(1);
+  }, [desdeStr, hastaStr, fPunto, historial.ventasDetalle.length]);
+
+  const totalPaginasVentasDetalle = Math.max(1, Math.ceil(historial.ventasDetalle.length / ventasPorPagina));
+  const paginaActualVentasDetalle = Math.min(paginaVentasDetalle, totalPaginasVentasDetalle);
+  const inicioVentasDetalle = (paginaActualVentasDetalle - 1) * ventasPorPagina;
+  const ventasDetallePagina = historial.ventasDetalle.slice(inicioVentasDetalle, inicioVentasDetalle + ventasPorPagina);
+  const finVentasDetalle = Math.min(historial.ventasDetalle.length, inicioVentasDetalle + ventasPorPagina);
+  const inicioPaginasVentas = Math.max(1, Math.min(paginaActualVentasDetalle - 2, totalPaginasVentasDetalle - 4));
+  const paginasVentasDetalle = Array.from({ length: Math.min(totalPaginasVentasDetalle, 5) }, (_, i) => inicioPaginasVentas + i);
+  const cambiarPaginaVentasDetalle = (pagina) => setPaginaVentasDetalle(Math.max(1, Math.min(totalPaginasVentasDetalle, pagina)));
 
   const abrir = async (e) => {
     e.preventDefault();
@@ -212,6 +245,7 @@ export default function Caja() {
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
           <StatCard icon={Store} label="Turnos" value={historial.global.cajas} color="#1A4FA0" />
           <StatCard icon={ArrowUpCircle} label="Ventas del periodo" value={fmt(historial.global.totalVentas)} color="#159A5A" sub={`${historial.global.ventas} factura(s)`} />
+          <StatCard icon={Receipt} label="Utilidad estimada" value={fmt(historial.totalUtilidad)} color={historial.totalUtilidad < 0 ? "#E22B23" : "#159A5A"} />
           <StatCard icon={Wallet} label="Efectivo vendido" value={fmt(historial.global.efectivo)} color="#F58220" />
           <StatCard icon={ArrowDownCircle} label="Gastos / retiros" value={fmt(historial.global.egresos + historial.global.retiros)} color="#E22B23" />
           <StatCard icon={BarChart3} label="Diferencia acumulada" value={fmt(historial.global.diferencia)} color={historial.global.diferencia < 0 ? "#E22B23" : "#159A5A"} />
@@ -245,12 +279,12 @@ export default function Caja() {
           <h3 className="font-bold text-sm p-4 pb-0">Detalle de turnos</h3>
           <table className="w-full text-sm min-w-[760px] mt-2">
             <thead><tr className="bg-sol-suave text-sol-gris">
-              {["Local", "Apertura", "Cierre", "Estado", "Ventas", "Facturas", "Esperado", "Real", "Diferencia"].map((h, i) => (
-                <th key={i} className={`px-3 py-2.5 font-bold ${i >= 4 ? "text-right" : "text-left"}`}>{h}</th>
+              {["Local", "Apertura", "Cierre", "Estado", "Ventas", "Facturas", "Esperado", "Real", "Diferencia", "Detalle"].map((h, i) => (
+                <th key={i} className={`px-3 py-2.5 font-bold ${i >= 4 && i !== 9 ? "text-right" : "text-left"}`}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {historial.detalle.map(({ caja, local, resumen: r }) => (
+              {historial.detalle.map(({ caja, local, resumen: r, movimientos }) => (
                 <tr key={caja.id_caja} className="border-t border-sol-suave">
                   <td className="px-3 py-2.5 font-bold">{local}</td>
                   <td className="px-3 py-2.5 text-sol-gris whitespace-nowrap">{fechaHora(caja.fecha_apertura)}</td>
@@ -265,12 +299,93 @@ export default function Caja() {
                   <td className="px-3 py-2.5 text-right">{fmt(caja.monto_final_esperado ?? r.saldoEsperado)}</td>
                   <td className="px-3 py-2.5 text-right">{caja.estado === "cerrada" ? fmt(caja.monto_final_real) : "-"}</td>
                   <td className={`px-3 py-2.5 text-right font-bold ${(Number(caja.diferencia) || 0) < 0 ? "text-sol-rojo" : "text-sol-exito"}`}>{caja.estado === "cerrada" ? fmt(caja.diferencia || 0) : "-"}</td>
+                  <td className="px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewCuadre({ caja: { ...caja, puntoNombre: local }, resumen: r, movimientos })}
+                      className="inline-flex items-center gap-1 rounded-lg border border-sol-borde px-2.5 py-1.5 text-xs font-bold text-sol-azul hover:bg-sol-suave">
+                      <Eye size={13} /> Ver
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {!cargandoHistorial && !historial.detalle.length && <p className="text-sol-gris text-sm p-6 text-center">No hay turnos de caja para los filtros seleccionados.</p>}
         </div>
+      </div>
+
+      <div className="rounded-2xl bg-white overflow-hidden border border-sol-borde">
+        <div className="p-4 border-b border-sol-borde flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-bold text-sm flex items-center gap-1.5"><Receipt size={15} className="text-sol-azul" /> Ventas detalladas del negocio</h3>
+            <p className="text-xs text-sol-gris">Detalle consolidado de lo vendido en el rango seleccionado, asociado a cada turno de caja.</p>
+          </div>
+          <span className="rounded-full bg-sol-suave px-3 py-1 text-xs font-bold text-sol-azul">
+            {historial.ventasDetalle.length
+              ? `Mostrando ${inicioVentasDetalle + 1}-${finVentasDetalle} de ${historial.ventasDetalle.length}`
+              : "0 venta(s)"}
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[980px]">
+            <thead><tr className="bg-sol-suave text-sol-gris">
+              {["Fecha", "Local", "Turno", "Factura", "Cliente", "Vendedor", "Pago", "Productos", "Total", "Utilidad est."].map((h, i) => (
+                <th key={i} className={`px-3 py-2.5 font-bold ${i >= 8 ? "text-right" : "text-left"}`}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {ventasDetallePagina.map((v) => (
+                <tr key={v.id || `${v.numero}-${v.fecha}`} className="border-t border-sol-suave align-top">
+                  <td className="px-3 py-2.5 text-sol-gris whitespace-nowrap">{fechaHora(v.fecha)}</td>
+                  <td className="px-3 py-2.5 font-bold">{v.local || v.puntoVenta || "Sin local"}</td>
+                  <td className="px-3 py-2.5 text-xs text-sol-gris whitespace-nowrap">{fechaHora(v.caja.fecha_apertura)}</td>
+                  <td className="px-3 py-2.5 font-bold text-sol-azul">{v.numero || v.id}</td>
+                  <td className="px-3 py-2.5">{v.cliente || "Consumidor final"}</td>
+                  <td className="px-3 py-2.5">{v.cajero || "Sin usuario"}</td>
+                  <td className="px-3 py-2.5 text-sol-gris">{v.pago || "Efectivo"}</td>
+                  <td className="px-3 py-2.5 text-sol-gris max-w-[260px]">{resumenProductosVenta(v)}</td>
+                  <td className="px-3 py-2.5 text-right font-extrabold">{fmt(v.total)}</td>
+                  <td className={`px-3 py-2.5 text-right font-extrabold ${utilidadVenta(v) < 0 ? "text-sol-rojo" : "text-sol-exito"}`}>{fmt(utilidadVenta(v))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!cargandoHistorial && !historial.ventasDetalle.length && (
+            <p className="text-sol-gris text-sm p-6 text-center">No hay ventas asociadas a los turnos de caja del rango seleccionado.</p>
+          )}
+        </div>
+        {historial.ventasDetalle.length > ventasPorPagina && (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 border-t border-sol-borde">
+            <button
+              type="button"
+              onClick={() => cambiarPaginaVentasDetalle(paginaActualVentasDetalle - 1)}
+              disabled={paginaActualVentasDetalle <= 1}
+              className="inline-flex items-center gap-1 rounded-xl border border-sol-borde bg-white px-3 py-2 text-xs font-extrabold text-sol-azul disabled:opacity-40 disabled:text-sol-gris">
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <div className="flex items-center justify-center gap-1">
+              {inicioPaginasVentas > 1 && <span className="px-1 text-xs text-sol-gris">...</span>}
+              {paginasVentasDetalle.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => cambiarPaginaVentasDetalle(p)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-extrabold border ${p === paginaActualVentasDetalle ? "bg-sol-azul text-white border-sol-azul" : "bg-white text-sol-gris border-sol-borde"}`}>
+                  {p}
+                </button>
+              ))}
+              {inicioPaginasVentas + paginasVentasDetalle.length - 1 < totalPaginasVentasDetalle && <span className="px-1 text-xs text-sol-gris">...</span>}
+            </div>
+            <button
+              type="button"
+              onClick={() => cambiarPaginaVentasDetalle(paginaActualVentasDetalle + 1)}
+              disabled={paginaActualVentasDetalle >= totalPaginasVentasDetalle}
+              className="inline-flex items-center gap-1 rounded-xl border border-sol-borde bg-white px-3 py-2 text-xs font-extrabold text-sol-azul disabled:opacity-40 disabled:text-sol-gris">
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
