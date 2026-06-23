@@ -27,6 +27,9 @@ export default function PuntoVenta() {
   const [productoVariante, setProductoVariante] = useState(null);
   const [paginaMenu, setPaginaMenu] = useState(1);
   const productosPorPagina = 12;
+  const categoriaKey = (c) => c?.uuid || c?.id;
+  const productoEnCategoria = (p, categoriaId) =>
+    categoriaId === "todas" || p.cat === categoriaId || p.catUuid === categoriaId;
 
   const seleccionarCliente = (id) => {
     setIdCliente(id || null);
@@ -202,7 +205,7 @@ export default function PuntoVenta() {
   const filtrados = useMemo(
     () => productos.filter((p) =>
       p.activo &&
-      (cat === "todas" || p.cat === cat) &&
+      productoEnCategoria(p, cat) &&
       (p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || (p.desc || "").toLowerCase().includes(busqueda.toLowerCase()))
     ),
     [productos, cat, busqueda]
@@ -238,9 +241,10 @@ export default function PuntoVenta() {
 
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1 shrink-0">
           {[{ id: "todas", nombre: "Todo" }, ...categorias.filter((c) => c.activo !== false)].map((c) => {
-            const act = cat === c.id;
+            const key = categoriaKey(c);
+            const act = cat === key;
             return (
-              <button key={c.id} onClick={() => setCat(c.id)}
+              <button key={key} onClick={() => setCat(key)}
                 className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition border ${act ? "bg-sol-azul text-white border-sol-azul" : "bg-white text-sol-tinta border-sol-borde hover:border-sol-azul"}`}>
                 {c.nombre}
               </button>

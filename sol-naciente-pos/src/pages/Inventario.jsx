@@ -24,6 +24,9 @@ export default function Inventario() {
   const [busqueda, setBusqueda] = useState("");
   const categoriasActivas = categorias.filter((c) => c.activo !== false);
   const [ordenandoCat, setOrdenandoCat] = useState(false);
+  const categoriaKey = (c) => c?.uuid || c?.id;
+  const productoEnCategoria = (p, categoriaId) =>
+    categoriaId === "todas" || p.cat === categoriaId || p.catUuid === categoriaId;
 
   const onSaveProd = async (p) => {
     try { await guardarProducto(p); toast.success(p.id ? "Producto actualizado" : "Producto creado"); setEditProd(undefined); }
@@ -81,7 +84,7 @@ export default function Inventario() {
   const productosFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return productos.filter((p) =>
-      (cat === "todas" || p.cat === cat) &&
+      productoEnCategoria(p, cat) &&
       (!q || p.nombre.toLowerCase().includes(q) || (p.desc || "").toLowerCase().includes(q) || String(p.id).toLowerCase().includes(q))
     );
   }, [productos, cat, busqueda]);
@@ -227,7 +230,7 @@ export default function Inventario() {
         </div>
       ),
     },
-    { key: "productos", label: "Productos", align: "right", className: "font-bold", render: (c) => productos.filter((p) => p.cat === c.id).length },
+    { key: "productos", label: "Productos", align: "right", className: "font-bold", render: (c) => productos.filter((p) => productoEnCategoria(p, categoriaKey(c))).length },
     {
       key: "estado", label: "Estado",
       render: (c) => (
@@ -280,9 +283,10 @@ export default function Inventario() {
         <div className="rounded-2xl border border-sol-borde bg-white/70 p-2 mb-4">
         <div className="flex gap-2 overflow-x-auto pb-1 max-w-full">
           {[{ id: "todas", nombre: "Todas" }, ...categoriasActivas].map((c) => {
-            const act = cat === c.id;
+            const key = categoriaKey(c);
+            const act = cat === key;
             return (
-              <button key={c.id} onClick={() => setCat(c.id)}
+              <button key={key} onClick={() => setCat(key)}
                 className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition border ${act ? "bg-sol-azul text-white border-sol-azul" : "bg-white text-sol-tinta border-sol-borde hover:border-sol-azul"}`}>
                 {c.nombre}
               </button>

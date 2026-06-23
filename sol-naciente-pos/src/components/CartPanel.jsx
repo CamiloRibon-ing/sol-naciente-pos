@@ -64,10 +64,10 @@ export default function CartPanel({
   };
 
   return (
-    <aside className="xl:w-96 shrink-0 bg-white border-l border-sol-borde overflow-auto">
+    <aside className="xl:w-[430px] shrink-0 bg-white border-l border-sol-borde overflow-auto">
       <div className="p-4 flex items-center gap-2 border-b border-sol-borde">
-        <Receipt size={18} className="text-sol-azul" />
-        <h2 className="font-extrabold">Pedido actual</h2>
+        <Receipt size={21} className="text-sol-azul" />
+        <h2 className="font-extrabold text-xl text-sol-tinta">Pedido actual</h2>
         {cart.length > 0 && <span className="ml-auto text-xs font-bold rounded-full px-2 py-0.5 bg-sol-suave text-sol-azul">{cart.length} ítems</span>}
         {cart.length > 0 && (
           <button onClick={onLimpiar} title="Limpiar pedido" className="text-xs font-bold text-sol-rojo hover:underline flex items-center gap-1">
@@ -87,15 +87,15 @@ export default function CartPanel({
           <div key={l.id} className="py-2 border-b border-sol-suave">
             <div className="flex items-center gap-2">
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-[13px] truncate">{l.nombre}</div>
-                <div className="text-sol-gris text-xs">{fmt(l.precio)}</div>
+                <div className="font-extrabold text-[15px] truncate text-sol-tinta">{l.nombre}</div>
+                <div className="text-sol-gris text-sm font-bold">{fmt(l.precio)}</div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button onClick={() => onDec(l.id)} className="rounded-md p-1 bg-sol-suave hover:bg-sol-borde"><Minus size={13} /></button>
-                <span className="font-bold text-[13px] text-center min-w-[18px]">{l.cantidad}</span>
+                <span className="font-extrabold text-base text-center min-w-[22px]">{l.cantidad}</span>
                 <button onClick={() => onInc(l.id)} className="rounded-md p-1 bg-sol-suave hover:bg-sol-borde"><Plus size={13} /></button>
               </div>
-              <div className="font-bold text-[13px] text-right min-w-[64px]">{fmt(l.precio * l.cantidad)}</div>
+              <div className="font-extrabold text-[15px] text-right min-w-[78px] text-sol-azul">{fmt(l.precio * l.cantidad)}</div>
               <button onClick={() => onDel(l.id)}><Trash2 size={14} className="text-sol-rojo" /></button>
             </div>
             <div className="flex items-center gap-2 mt-1.5 pl-0.5">
@@ -112,17 +112,17 @@ export default function CartPanel({
         ))}
       </div>
 
-      <div className="p-4 space-y-2 border-t border-sol-borde bg-sol-crema">
-        <div className="relative">
+      <div className="p-4 space-y-3 border-t border-sol-borde bg-sol-crema">
+        <div className="relative rounded-2xl border border-sol-borde bg-white p-3">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <span className="text-[11px] font-bold uppercase text-sol-gris">Cliente</span>
+            <span className="text-sm font-extrabold uppercase text-sol-azulOsc">Datos del cliente</span>
             <button type="button" onClick={onNuevoCliente}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-sol-azul hover:bg-white">
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-sol-azul hover:bg-sol-crema">
               <UserPlus size={12} /> Registrar rapido
             </button>
           </div>
           {idCliente ? (
-            <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs border border-sol-azul bg-white">
+            <div className="flex items-center justify-between rounded-xl px-3 py-3 text-sm border border-sol-azul bg-sol-azul/5">
               <span className="font-bold truncate">{cliente}</span>
               <button onClick={limpiarCliente}><X size={14} className="text-sol-gris" /></button>
             </div>
@@ -131,7 +131,7 @@ export default function CartPanel({
               <select
                 value=""
                 onChange={(e) => elegirClientePorId(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul mb-2">
+                className="w-full rounded-xl px-3 py-3 text-sm font-bold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul mb-2">
                 <option value="">Seleccionar cliente registrado</option>
                 {clientesOrdenados.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -145,13 +145,13 @@ export default function CartPanel({
                   value={busquedaCliente || cliente}
                   onChange={(e) => { setBusquedaCliente(e.target.value); setCliente(e.target.value); }}
                   placeholder="Buscar cliente o escribir nombre…"
-                  className="w-full rounded-lg pl-7 pr-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
+                  className="w-full rounded-xl pl-8 pr-3 py-3 text-sm font-bold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul" />
               </div>
               {sugerencias.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-sol-borde bg-white shadow-md overflow-hidden">
                   {sugerencias.map((c) => (
                     <button key={c.id} onClick={() => elegirCliente(c)}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-sol-suave flex justify-between gap-2">
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-sol-suave flex justify-between gap-2">
                       <span className="font-bold truncate">{c.nombre}</span>
                       {c.documento && <span className="text-sol-gris">{c.documento}</span>}
                     </button>
@@ -162,15 +162,17 @@ export default function CartPanel({
           )}
         </div>
 
+        <div className="rounded-2xl border border-sol-borde bg-white p-3 space-y-3">
+        <h3 className="text-sm font-extrabold uppercase text-sol-azulOsc">Datos de venta</h3>
         <div className="flex items-center gap-2">
           <input type="number" min="0" max="100" value={descuentoGlobal || ""} placeholder="0"
             onChange={(e) => setDescuentoGlobal(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-            className="w-16 rounded-lg px-2 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul text-right" />
-          <span className="text-xs text-sol-gris">% descuento general del pedido</span>
+            className="w-20 rounded-xl px-2 py-2.5 text-sm font-bold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul text-right" />
+          <span className="text-sm font-bold text-sol-gris">% descuento general del pedido</span>
         </div>
 
         <button onClick={() => setPagoMixto(!pagoMixto)}
-          className={`w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold border transition ${pagoMixto ? "bg-sol-azul text-white border-sol-azul" : "bg-white text-sol-azul border-sol-borde hover:border-sol-azul"}`}>
+          className={`w-full flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-extrabold border transition ${pagoMixto ? "bg-sol-azul text-white border-sol-azul" : "bg-white text-sol-azul border-sol-borde hover:border-sol-azul"}`}>
           <SplitSquareHorizontal size={13} /> {pagoMixto ? "Pago mixto activado" : "Activar pago mixto"}
         </button>
 
@@ -179,11 +181,11 @@ export default function CartPanel({
             {pagos.map((p, i) => (
               <div key={i} className="grid grid-cols-2 gap-2">
                 <select value={p.metodo} onChange={(e) => setMetodoPago(i, e.target.value)}
-                  className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
+                  className="rounded-xl px-3 py-2.5 text-sm font-bold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
                   {metodosPago.map((x) => <option key={x}>{x}</option>)}
                 </select>
                 <input inputMode="numeric" value={p.monto ? formatoMontoInput(p.monto) : ""} onChange={(e) => setMontoPago(i, e.target.value)} placeholder="Monto"
-                  className="rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul text-right" />
+                  className="rounded-xl px-3 py-2.5 text-sm font-bold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul text-right" />
               </div>
             ))}
             <div className={`flex justify-between text-xs font-bold ${difPagos === 0 ? "text-sol-exito" : "text-sol-rojo"}`}>
@@ -197,17 +199,17 @@ export default function CartPanel({
         ) : (
           <div className="space-y-2">
             <select value={pago} onChange={(e) => setPago(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-xs border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
+              className="w-full rounded-xl px-3 py-3 text-sm font-extrabold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul">
               {metodosPago.map((x) => <option key={x}>{x}</option>)}
             </select>
             {pago === "Efectivo" && (
-              <div className="rounded-lg border border-sol-borde bg-white p-2 space-y-1.5">
+              <div className="rounded-2xl border border-sol-borde bg-sol-crema p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-sol-gris">Dinero recibido</span>
+                  <span className="text-sm font-extrabold text-sol-tinta">Dinero recibido</span>
                   <input inputMode="numeric" value={dineroRecibido} onChange={(e) => setDineroRecibido(formatoMontoInput(e.target.value))} placeholder="0"
-                    className="w-32 rounded-lg px-3 py-1.5 text-xs border border-sol-borde bg-sol-crema focus:outline-none focus:border-sol-azul text-right" />
+                    className="w-40 rounded-xl px-3 py-2.5 text-base font-extrabold border border-sol-borde bg-white focus:outline-none focus:border-sol-azul text-right" />
                 </div>
-                <div className={`flex justify-between text-xs font-bold ${faltaSimple > 0 ? "text-sol-rojo" : "text-sol-exito"}`}>
+                <div className={`flex justify-between text-base font-extrabold ${faltaSimple > 0 ? "text-sol-rojo" : "text-sol-exito"}`}>
                   <span>{faltaSimple > 0 ? "Falta recibir" : "Cambio por dar"}</span>
                   <span>{fmt(faltaSimple > 0 ? faltaSimple : cambioSimple)}</span>
                 </div>
@@ -217,18 +219,19 @@ export default function CartPanel({
         )}
 
         {pagoMixto && cambioMixto > 0 && (
-          <div className="rounded-lg bg-sol-exito/10 text-sol-exito px-3 py-2 text-xs font-bold flex justify-between">
+          <div className="rounded-xl bg-sol-exito/10 text-sol-exito px-3 py-2 text-base font-extrabold flex justify-between">
             <span>Cambio por dar</span><span>{fmt(cambioMixto)}</span>
           </div>
         )}
+        </div>
 
-        <div className="text-xs space-y-1">
+        <div className="text-sm space-y-1 rounded-2xl border border-sol-borde bg-white p-3">
           <div className="flex justify-between text-sol-gris"><span>Subtotal</span><span>{fmt(subtotalBruto)}</span></div>
           {descuentoTotal > 0 && (
             <div className="flex justify-between text-sol-rojo"><span>Descuentos</span><span>- {fmt(descuentoTotal)}</span></div>
           )}
           <div className="flex justify-between text-sol-gris"><span>Impoconsumo 8%</span><span>{fmt(impuestos)}</span></div>
-          <div className="flex justify-between text-base font-extrabold pt-1 text-sol-azul"><span>Total</span><span>{fmt(total)}</span></div>
+          <div className="flex justify-between text-xl font-extrabold pt-1 text-sol-azul"><span>Total</span><span>{fmt(total)}</span></div>
         </div>
         <div className="flex gap-2">
           <button disabled={!cart.length} onClick={onCotizar}

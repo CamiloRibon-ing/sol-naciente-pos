@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Building2, Eye, EyeOff, Image as ImageIcon, Percent, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, Eye, EyeOff, GripVertical, Image as ImageIcon, Percent, RotateCcw, Save } from "lucide-react";
 import toast from "react-hot-toast";
 import { useStore } from "../context/StoreContext";
 import { EMPRESA, IMPUESTO } from "../lib/format";
@@ -11,6 +11,7 @@ const MENU_SECCIONES = [
   { id: "caja", label: "Caja", fijo: false },
   { id: "ventas", label: "Ventas", fijo: false },
   { id: "rep-vendedor", label: "Vendedores", fijo: false },
+  { id: "informes", label: "Informes", fijo: false },
   { id: "reservas", label: "Reservas", fijo: false },
   { id: "clientes", label: "Clientes", fijo: false },
   { id: "locales", label: "Locales", fijo: false },
@@ -41,6 +42,8 @@ export default function Configuracion() {
   const { configuracionNegocio, guardarConfiguracionNegocio } = useStore();
   const [f, setF] = useState(configBase);
   const [guardando, setGuardando] = useState(false);
+  const [arrastrandoId, setArrastrandoId] = useState(null);
+  const [sobreId, setSobreId] = useState(null);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
@@ -75,15 +78,47 @@ export default function Configuracion() {
       [nuevo[i], nuevo[j]] = [nuevo[j], nuevo[i]];
       return { ...s, menuOrden: nuevo };
     });
+    toast("Orden actualizado. Guarda los cambios para aplicarlo.", { icon: "i" });
+  };
+
+  const soltarMenu = (destinoId) => {
+    if (!arrastrandoId || arrastrandoId === destinoId) {
+      setArrastrandoId(null);
+      setSobreId(null);
+      return;
+    }
+    setF((s) => {
+      const orden = ordenarMenu(s.menuOrden);
+      const origen = orden.indexOf(arrastrandoId);
+      const destino = orden.indexOf(destinoId);
+      if (origen < 0 || destino < 0) return s;
+      const nuevo = [...orden];
+      const [item] = nuevo.splice(origen, 1);
+      nuevo.splice(destino, 0, item);
+      return { ...s, menuOrden: nuevo };
+    });
+    setArrastrandoId(null);
+    setSobreId(null);
+    toast("Seccion reubicada. Guarda los cambios para aplicarlo.", { icon: "i" });
+  };
+
+  const restaurarMenu = () => {
+    setF((s) => ({ ...s, menuOrden: MENU_SECCIONES.map((sec) => sec.id), menuOculto: [] }));
+    toast("Menu restaurado. Guarda los cambios para aplicarlo.", { icon: "i" });
   };
 
   const alternarMenu = (id) => {
     const seccion = MENU_SECCIONES.find((s) => s.id === id);
-    if (seccion?.fijo) return;
+    if (seccion?.fijo) {
+      toast.error("Configuracion siempre debe estar visible para no perder acceso.");
+      return;
+    }
     setF((s) => {
       const ocultos = new Set(s.menuOculto || []);
-      if (ocultos.has(id)) ocultos.delete(id);
+      const estabaOculto = ocultos.has(id);
+      if (estabaOculto) ocultos.delete(id);
       else ocultos.add(id);
+      toast(estabaOculto ? `${seccion.label} visible. Guarda los cambios.` : `${seccion.label} oculto. Guarda los cambios.`, { icon: "i" });
       return { ...s, menuOculto: [...ocultos] };
     });
   };
@@ -189,22 +224,45 @@ export default function Configuracion() {
       </div>
 
       <div className="mt-4 rounded-2xl bg-white border border-sol-borde p-4">
-        <h2 className="font-extrabold mb-3">Orden y visibilidad de secciones</h2>
-        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <h2 className="font-extrabold">Orden y visibilidad de secciones</h2>
+            <p className="text-xs text-sol-gris mt-0.5">Arrastra cada seccion para reubicarla en el menu lateral. Los cambios se aplican al guardar.</p>
+          </div>
+          <button type="button" onClick={restaurarMenu} className="inline-flex items-center gap-1.5 rounded-xl border border-sol-borde px-3 py-2 text-xs font-bold text-sol-azul hover:border-sol-azul hover:bg-sol-azul/5">
+            <RotateCcw size={14} /> Restaurar
+          </button>
+        </div>
+        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
           {ordenarMenu(f.menuOrden).map((id, idx) => {
             const seccion = MENU_SECCIONES.find((s) => s.id === id);
             if (!seccion) return null;
             const oculto = (f.menuOculto || []).includes(id);
+            const activoDrop = sobreId === id && arrastrandoId !== id;
             return (
-              <div key={id} className={`rounded-xl border border-sol-borde p-3 flex items-center justify-between gap-3 ${oculto ? "bg-sol-suave/70 opacity-70" : "bg-sol-crema/40"}`}>
-                <div>
-                  <div className="font-bold text-sm">{idx + 1}. {seccion.label}</div>
-                  <div className="text-[11px] text-sol-gris">{seccion.fijo ? "Siempre visible para no perder acceso" : oculto ? "Oculta del menu" : "Visible en el menu"}</div>
+              <div
+                key={id}
+                draggable
+                onDragStart={(e) => { setArrastrandoId(id); e.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={(e) => { e.preventDefault(); setSobreId(id); }}
+                onDragLeave={() => setSobreId(null)}
+                onDrop={(e) => { e.preventDefault(); soltarMenu(id); }}
+                onDragEnd={() => { setArrastrandoId(null); setSobreId(null); }}
+                className={`rounded-2xl border p-3 flex items-center justify-between gap-3 transition shadow-sm ${oculto ? "bg-sol-suave/70 opacity-75" : "bg-white"} ${activoDrop ? "border-sol-azul ring-4 ring-sol-azul/10" : "border-sol-borde"} ${arrastrandoId === id ? "opacity-50 scale-[0.99]" : ""}`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sol-crema border border-sol-borde text-sol-azul cursor-grab active:cursor-grabbing">
+                    <GripVertical size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-sm truncate">{idx + 1}. {seccion.label}</div>
+                    <div className="text-[11px] text-sol-gris">{seccion.fijo ? "Siempre visible para no perder acceso" : oculto ? "Oculta del menu" : "Visible en el menu"}</div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => moverMenu(id, -1)} className="p-1.5 rounded-lg hover:bg-white" title="Subir"><ArrowUp size={15} className="text-sol-azul" /></button>
-                  <button type="button" onClick={() => moverMenu(id, 1)} className="p-1.5 rounded-lg hover:bg-white" title="Bajar"><ArrowDown size={15} className="text-sol-azul" /></button>
-                  <button type="button" onClick={() => alternarMenu(id)} disabled={seccion.fijo} className="p-1.5 rounded-lg hover:bg-white disabled:opacity-40" title={oculto ? "Mostrar" : "Ocultar"}>
+                  <button type="button" onClick={() => moverMenu(id, -1)} disabled={idx === 0} className="p-1.5 rounded-lg hover:bg-sol-crema disabled:opacity-30" title="Subir"><ArrowUp size={15} className="text-sol-azul" /></button>
+                  <button type="button" onClick={() => moverMenu(id, 1)} disabled={idx === ordenarMenu(f.menuOrden).length - 1} className="p-1.5 rounded-lg hover:bg-sol-crema disabled:opacity-30" title="Bajar"><ArrowDown size={15} className="text-sol-azul" /></button>
+                  <button type="button" onClick={() => alternarMenu(id)} disabled={seccion.fijo} className="p-1.5 rounded-lg hover:bg-sol-crema disabled:opacity-40" title={oculto ? "Mostrar" : "Ocultar"}>
                     {oculto ? <EyeOff size={15} className="text-sol-rojo" /> : <Eye size={15} className="text-sol-exito" />}
                   </button>
                 </div>

@@ -101,6 +101,7 @@ const mapProducto = (row) => ({
   controlaInventario: row.controla_inventario,
   stock: Number(row.stock_actual) || 0,
   stockMin: Number(row.stock_minimo) || 0,
+  catUuid: row.id_categoria || row.categorias?.id_categoria || null,
   cat: catIdLocal(row.categorias?.nombre_categoria),
   receta: (row.recetas || []).map((r) => ({ ingredienteId: r.id_ingrediente, cantidad: Number(r.cantidad) })),
   variantes: (row.producto_variantes || []).map((v) => ({
@@ -932,11 +933,23 @@ export async function listCompras() {
 
 // Registra una compra de insumos: suma stock y actualiza el costo del ingrediente (último precio de compra).
 export async function crearCompra({ idProveedor, numeroFactura, fecha, items, idUsuario }) {
+  const productosCompra = items.filter((it) => it.productoId);
+  const validarProductoCompraDemo = (producto) => {
+    if (!producto) return "Producto no encontrado";
+    if (producto.activo === false) return `El producto "${producto.nombre}" esta inactivo`;
+    if (!producto.controlaInventario) return `El producto "${producto.nombre}" no controla inventario`;
+    if ((producto.receta || []).length) return `El producto "${producto.nombre}" maneja receta; compra sus insumos, no el producto final`;
+    return null;
+  };
   const subtotal = items.reduce((s, it) => s + it.cantidad * it.costoUnitario, 0);
   const total = subtotal;
   const fechaISO = fecha || new Date().toISOString();
 
   if (modoDemo) {
+    for (const it of productosCompra) {
+      const errorProducto = validarProductoCompraDemo(_productos.find((p) => p.id === it.productoId));
+      if (errorProducto) throw new Error(errorProducto);
+    }
     const proveedor = _proveedores.find((p) => p.id === idProveedor);
     const itemsConDatos = items.map((it) => {
       if (it.productoId) {
@@ -959,6 +972,22 @@ export async function crearCompra({ idProveedor, numeroFactura, fecha, items, id
     });
     await registrarAuditoria({ idUsuario, accion: "CREAR_COMPRA", tabla: "inventario", registroId: id, detalle: { proveedor: proveedor?.nombre || "Sin proveedor", total, items: itemsConDatos.length } });
     return wait({ id, fecha: fechaISO });
+  }
+
+  if (productosCompra.length) {
+    const idsProductos = [...new Set(productosCompra.map((it) => it.productoId).filter(Boolean))];
+    const { data: productosCompraDb, error: errorProductosCompra } = await supabase
+      .from("productos")
+      .select("id_producto, nombre, activo, controla_inventario, recetas(id_producto)")
+      .in("id_producto", idsProductos);
+    if (errorProductosCompra) throw errorProductosCompra;
+    for (const id of idsProductos) {
+      const prod = (productosCompraDb || []).find((p) => p.id_producto === id);
+      if (!prod) throw new Error("Uno de los productos seleccionados ya no existe en inventario");
+      if (prod.activo === false) throw new Error(`El producto "${prod.nombre}" esta inactivo`);
+      if (!prod.controla_inventario) throw new Error(`El producto "${prod.nombre}" no controla inventario`);
+      if ((prod.recetas || []).length) throw new Error(`El producto "${prod.nombre}" maneja receta; compra sus insumos, no el producto final`);
+    }
   }
 
   const { data: bod } = await supabase.from("bodegas").select("id_bodega").limit(1).single();

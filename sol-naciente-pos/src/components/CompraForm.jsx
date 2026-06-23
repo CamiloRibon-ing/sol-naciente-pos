@@ -6,23 +6,46 @@ import { fmt, formatoMontoInput, limpiarMonto } from "../lib/format";
 const hoy = () => new Date().toISOString().slice(0, 10);
 
 export default function CompraForm({ proveedores, ingredientes, productos = [], onSave, onClose }) {
-  const productosStockDirecto = useMemo(
-    () => productos.filter((p) => p.controlaInventario && !(p.receta || []).length),
+  const productosActivos = useMemo(
+    () => productos
+      .filter((p) => p.activo !== false)
+      .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")),
     [productos]
+  );
+  const productosStockDirecto = useMemo(
+    () => productosActivos
+      .filter((p) => p.activo !== false && p.controlaInventario && !(p.receta || []).length)
+      .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")),
+    [productosActivos]
+  );
+  const productosStockDirectoIds = useMemo(() => new Set(productosStockDirecto.map((p) => p.id)), [productosStockDirecto]);
+  const razonProductoNoComprable = (p) => {
+    if (p.activo === false) return "inactivo";
+    if (!p.controlaInventario) return "sin stock";
+    if ((p.receta || []).length) return "por receta";
+    return "";
+  };
+  const ingredientesOrdenados = useMemo(
+    () => [...ingredientes].sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")),
+    [ingredientes]
   );
   const [f, setF] = useState({ idProveedor: proveedores[0]?.id || "", numeroFactura: "", fecha: hoy(), items: [] });
   const [guardando, setGuardando] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
-  const itemInicial = () => {
-    if (ingredientes.length) {
-      return { tipo: "ingrediente", ingredienteId: ingredientes[0].id, productoId: "", cantidad: 1, costoUnitario: formatoMontoInput(ingredientes[0].costo || 0) };
+  const itemInicial = (tipoPreferido = "ingrediente") => {
+    if (tipoPreferido === "producto") {
+      const prod = productosStockDirecto[0];
+      return { tipo: "producto", ingredienteId: "", productoId: prod?.id || "", cantidad: 1, costoUnitario: formatoMontoInput(prod?.costo || 0) };
+    }
+    if (ingredientesOrdenados.length) {
+      return { tipo: "ingrediente", ingredienteId: ingredientesOrdenados[0].id, productoId: "", cantidad: 1, costoUnitario: formatoMontoInput(ingredientesOrdenados[0].costo || 0) };
     }
     const prod = productosStockDirecto[0];
     return { tipo: "producto", ingredienteId: "", productoId: prod?.id || "", cantidad: 1, costoUnitario: formatoMontoInput(prod?.costo || 0) };
   };
 
-  const addItem = () => set("items", [...f.items, itemInicial()]);
+  const addItem = (tipo = "ingrediente") => set("items", [...f.items, itemInicial(tipo)]);
   const setItem = (i, k, v) => {
     set("items", f.items.map((it, idx) => {
       if (idx !== i) return it;
@@ -31,15 +54,16 @@ export default function CompraForm({ proveedores, ingredientes, productos = [], 
           const prod = productosStockDirecto[0];
           return { ...it, tipo: "producto", ingredienteId: "", productoId: prod?.id || "", costoUnitario: formatoMontoInput(prod?.costo || 0) };
         }
-        const ing = ingredientes[0];
+        const ing = ingredientesOrdenados[0];
         return { ...it, tipo: "ingrediente", ingredienteId: ing?.id || "", productoId: "", costoUnitario: formatoMontoInput(ing?.costo || 0) };
       }
       if (k === "ingredienteId") {
-        const ing = ingredientes.find((x) => x.id === v);
+        const ing = ingredientesOrdenados.find((x) => x.id === v);
         return { ...it, ingredienteId: v, costoUnitario: formatoMontoInput(ing?.costo || it.costoUnitario) };
       }
       if (k === "productoId") {
         const prod = productosStockDirecto.find((x) => x.id === v);
+        if (!prod) return it;
         return { ...it, productoId: v, costoUnitario: formatoMontoInput(prod?.costo || it.costoUnitario) };
       }
       return { ...it, [k]: v };
@@ -91,27 +115,48 @@ export default function CompraForm({ proveedores, ingredientes, productos = [], 
         <div className="col-span-2 rounded-xl border border-sol-borde p-3 bg-sol-crema">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-extrabold text-sol-tinta">Items comprados</span>
-            <button type="button" onClick={addItem} className="text-xs font-bold text-sol-azul flex items-center gap-1" disabled={!ingredientes.length && !productosStockDirecto.length}>
-              <Plus size={13} /> Agregar
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => addItem("ingrediente")} className="text-xs font-bold text-sol-azul flex items-center gap-1" disabled={!ingredientesOrdenados.length}>
+                <Plus size={13} /> Agregar insumo
+              </button>
+              <button type="button" onClick={() => addItem("producto")} className="text-xs font-bold text-sol-azul flex items-center gap-1" disabled={!productosStockDirecto.length}>
+                <Plus size={13} /> Agregar producto
+              </button>
+            </div>
           </div>
           {!f.items.length && <p className="text-xs text-sol-grisClaro">Agrega ingredientes o productos con stock directo para registrar la compra.</p>}
+          <p className="mb-2 rounded-lg border border-sol-borde bg-white px-3 py-2 text-xs text-sol-gris">
+            Productos visibles: {productosActivos.length}. Seleccionables para compra directa: {productosStockDirecto.length}. Los productos por receta deben comprarse como insumos.
+          </p>
+          {!productosStockDirecto.length && (
+            <p className="mb-2 rounded-lg border border-sol-borde bg-white px-3 py-2 text-xs text-sol-gris">
+              No hay productos activos con stock directo. Para comprar un producto aquí, debe estar activo, controlar inventario y no tener receta.
+            </p>
+          )}
           {f.items.map((it, i) => {
             const sub = (+it.cantidad || 0) * limpiarMonto(it.costoUnitario);
             return (
               <div key={i} className="grid gap-2 mb-2" style={{ gridTemplateColumns: "120px minmax(180px, 1fr) 82px 112px 90px 28px" }}>
                 <select className={campo} value={it.tipo || "ingrediente"} onChange={(e) => setItem(i, "tipo", e.target.value)}>
-                  <option value="ingrediente" disabled={!ingredientes.length}>Insumo</option>
+                  <option value="ingrediente" disabled={!ingredientesOrdenados.length}>Insumo</option>
                   <option value="producto" disabled={!productosStockDirecto.length}>Producto</option>
                 </select>
                 {(it.tipo || "ingrediente") === "producto" ? (
                   <select className={campo} value={it.productoId || ""} onChange={(e) => setItem(i, "productoId", e.target.value)}>
                     {!productosStockDirecto.length && <option value="">Sin productos con stock directo</option>}
-                    {productosStockDirecto.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    {productosActivos.map((p) => {
+                      const comprable = productosStockDirectoIds.has(p.id);
+                      const razon = razonProductoNoComprable(p);
+                      return (
+                        <option key={p.id} value={p.id} disabled={!comprable}>
+                          {p.nombre}{comprable ? "" : ` (${razon})`}
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <select className={campo} value={it.ingredienteId || ""} onChange={(e) => setItem(i, "ingredienteId", e.target.value)}>
-                    {ingredientes.map((g) => <option key={g.id} value={g.id}>{g.nombre} ({g.unidad})</option>)}
+                    {ingredientesOrdenados.map((g) => <option key={g.id} value={g.id}>{g.nombre} ({g.unidad})</option>)}
                   </select>
                 )}
                 <input type="number" step="0.01" min="0" className={campo} value={it.cantidad}
